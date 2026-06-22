@@ -1,14 +1,17 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
 import os
 from datetime import datetime
+import pandas as pd
+import streamlit as st
 
 st.set_page_config(page_title="Portal Torre Logística", layout="centered")
 
 META_ATUAL = 94.1
 ARQUIVO_BASE = "Faturamento SLA 2026.xlsb"
 COR_NEUTRA = "#1f2937"
+MESES_BR = {
+    '01': 'Jan', '02': 'Fev', '03': 'Mar', '04': 'Abr', '05': 'Mai', '06': 'Jun',
+    '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez'
+}
 
 st.markdown(
     """
@@ -43,82 +46,53 @@ st.markdown(
     .metric-label { font-size: 12px; color: #667781; margin-bottom: 4px; }
     .metric-value { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
     .metric-meta { font-size: 12px; font-weight: 700; color: #667781; margin-bottom: 8px; }
-    .metric-list {
-        margin-top: 10px; padding-top: 8px; border-top: 1px solid #e6e6e6; text-align: left;
-    }
-    .metric-list-title {
-        font-size: 11px; color: #667781; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.02em;
-    }
-    .metric-line {
-        display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 2px 0; line-height: 1.45;
-    }
+    .metric-list { margin-top: 10px; padding-top: 8px; border-top: 1px solid #e6e6e6; text-align: left; }
+    .metric-list-title { font-size: 11px; color: #667781; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.02em; }
+    .metric-line { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 2px 0; line-height: 1.45; }
     .metric-name { font-weight: 600; color: #1f2937; }
     .metric-pct { font-weight: 700; }
-    .month-list-box {
+
+    .month-card {
         background: #ffffff; border-radius: 14px; padding: 16px; margin-top: 10px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.08); border: 1px solid #e6e6e6;
     }
-    .month-list-title { font-size: 18px; font-weight: 700; color: #075E54; margin-bottom: 6px; }
-    .month-list-subtitle { font-size: 12px; color: #667781; margin-bottom: 14px; }
+    .month-title { font-size: 18px; font-weight: 700; color: #075E54; margin-bottom: 6px; }
+    .month-subtitle { font-size: 12px; color: #667781; margin-bottom: 14px; }
     .month-highlight {
         background: linear-gradient(90deg, #075E54 0%, #0b6d62 100%); color: white; border-radius: 12px;
         padding: 12px 14px; font-weight: 700; font-size: 16px; margin-bottom: 12px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.12);
     }
-    .month-table-card {
-        background: #f7f7f7; border: 1px solid #e3e3e3; border-radius: 12px; padding: 12px;
+    .ofensores-label { color: #c62828; font-weight: 900; text-align: center; font-size: 12px; margin-bottom: 6px; }
+    .header-pill {
+        background: rgba(7, 94, 84, 0.06); color: #075E54; border-radius: 8px; padding: 6px 8px;
+        text-align: center; font-weight: 800; font-size: 11px; text-transform: uppercase;
     }
-    .month-header-offensores {
-        display: grid; grid-template-columns: 1.15fr 0.85fr 1fr 1fr; gap: 8px;
-        font-size: 11px; color: #667781; font-weight: 700; margin-bottom: 4px;
-        text-transform: uppercase; letter-spacing: 0.02em; align-items: center;
+    .header-cell { color: #667781; font-weight: 700; font-size: 11px; text-transform: uppercase; padding: 6px 2px; }
+    .cell-month { font-weight: 700; color: #1f2937; padding-top: 10px; }
+    .cell-sla { font-weight: 800; padding-top: 10px; }
+    .pill-neutro {
+        background: rgba(7, 94, 84, 0.06); border-radius: 8px; padding: 8px 10px; text-align: center;
+        font-weight: 700; color: #1f2937; margin-top: 4px;
     }
-    .month-header-offensores .off-label {
-        grid-column: 3 / 5;
-        display: flex; justify-content: center; align-items: center;
-        text-align: center; color: #c62828; font-weight: 900; font-size: 12px; line-height: 1; width: 100%;
-    }
-    .month-header {
-        display: grid; grid-template-columns: 1.15fr 0.85fr 1fr 1fr; gap: 8px;
-        font-size: 11px; color: #667781; font-weight: 700; margin-bottom: 6px;
-        text-transform: uppercase; letter-spacing: 0.02em; padding-bottom: 8px; border-bottom: 1px solid #e6e6e6;
-        align-items: center;
-    }
-    .month-header .col-cd, .month-header .col-empresa {
-        text-align: center; color: #075E54; font-weight: 800;
-        background: rgba(7, 94, 84, 0.06); border-radius: 8px; padding: 4px 8px;
-    }
-    .month-list { margin-top: 6px; }
-    .month-line {
-        display: grid; grid-template-columns: 1.15fr 0.85fr 1fr 1fr; gap: 8px; font-size: 12px;
-        padding: 6px 0; line-height: 1.45; border-bottom: 1px solid #ececec; align-items: center;
-    }
-    .month-line:last-child { border-bottom: none; }
-    .month-name { font-weight: 600; color: #1f2937; }
-    .month-pct { font-weight: 700; }
-    .month-cd, .month-empresa {
-        font-weight: 700; color: #1f2937; text-align: center;
-        background: rgba(7, 94, 84, 0.06); border-radius: 8px; padding: 4px 8px;
-    }
+    .row-sep { border-top: 1px solid #ececec; margin-top: 8px; padding-top: 8px; }
     .notranslate { white-space: nowrap; }
-    @media (max-width: 768px) {
-        .main .block-container { max-width: 100% !important; padding-left: 0.7rem; padding-right: 0.7rem; }
-        .topbar { padding: 12px 14px; }
-        .topbar-title { font-size: 16px; }
-        .card-title, .month-list-title { font-size: 16px; }
-        .month-header-offensores, .month-header { font-size: 10px; gap: 6px; }
-        .month-line { font-size: 12px; gap: 6px; }
-        .month-cd, .month-empresa, .month-header .col-cd, .month-header .col-empresa { padding: 4px 6px; }
-    }
+
     div.stButton > button {
-        border-radius: 10px !important; border: 1px solid #d0d7de !important; min-height: 42px !important;
-        font-weight: 600 !important; background: white !important;
+        border-radius: 10px !important; border: 1px solid #d0d7de !important; min-height: 38px !important;
+        font-weight: 700 !important; background: rgba(7, 94, 84, 0.06) !important; color: #1f2937 !important;
+        width: 100% !important;
     }
     div.stButton > button:hover { border-color: #25D366 !important; color: #075E54 !important; }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+
+def mes_br(mm_yyyy: str) -> str:
+    mm, yyyy = mm_yyyy.split('/')
+    return f"{MESES_BR.get(mm, mm)}/{yyyy[-2:]}"
 
 
 def cor_por_meta(valor_pct: str) -> str:
@@ -131,10 +105,7 @@ def fmt_pct(valor: float) -> str:
 
 
 def normalizar_categoria(s: pd.Series, valor_padrao='Não informado') -> pd.Series:
-    s = (s.fillna(valor_padrao)
-           .astype(str)
-           .str.replace('\u00A0', '', regex=False)
-           .str.strip())
+    s = (s.fillna(valor_padrao).astype(str).str.replace('\u00A0', '', regex=False).str.strip())
     return s.replace({'': valor_padrao, 'nan': valor_padrao, 'NaN': valor_padrao, 'None': valor_padrao, '<NA>': valor_padrao, 'undefined': valor_padrao})
 
 
@@ -142,17 +113,13 @@ def normalizar_categoria(s: pd.Series, valor_padrao='Não informado') -> pd.Seri
 def carregar_base_real(path: str) -> pd.DataFrame:
     if not os.path.exists(path):
         raise FileNotFoundError(f"Arquivo {path} não encontrado na raiz do repositório.")
-
     df = pd.read_excel(path, engine='pyxlsb')
     df.columns = df.columns.str.strip()
-
     if 'Pedido' not in df.columns and 'Pedidos' in df.columns:
         df['Pedido'] = df['Pedidos']
-
     for col in ['CD Origem', 'Empresa', 'Canal de Atuacao', 'Canal', 'Operador', 'Unidade de Negocio']:
         if col in df.columns:
             df[col] = normalizar_categoria(df[col])
-
     if 'Data NF' not in df.columns:
         raise KeyError("Coluna 'Data NF' não encontrada na base.")
     if 'Aging_Ajustado_D+' not in df.columns:
@@ -172,7 +139,6 @@ def carregar_base_real(path: str) -> pd.DataFrame:
     df['Data NF'] = _converter_data_excel(df['Data NF'])
     df = df[df['Data NF'].notna()].copy()
     df['Mes_Ano'] = df['Data NF'].dt.strftime('%m/%Y')
-
     aging = df['Aging_Ajustado_D+'].astype(str).str.extract(r'D\+(\d+)')[0]
     df['aging_num'] = pd.to_numeric(aging, errors='coerce')
     df = df[df['aging_num'].notna()].copy()
@@ -180,7 +146,6 @@ def carregar_base_real(path: str) -> pd.DataFrame:
     df['flag_d0'] = df['aging_num'] == 0
     df['flag_d1'] = df['aging_num'] == 1
     df['flag_d2'] = df['aging_num'] == 2
-
     return df
 
 
@@ -199,26 +164,31 @@ def construir_visao_geral(df: pd.DataFrame) -> list:
     linhas = []
     for mes in meses:
         base = df[df['Mes_Ano'] == mes].copy()
-        metrica = calc_metrica(base)
+        metrica_mes = calc_metrica(base)
         if 'CD Origem' in base.columns:
             grp_cd = base.groupby('CD Origem').apply(lambda g: calc_metrica(g)['D+1']).sort_values()
-            pior_cd = grp_cd.index[0] if len(grp_cd) else 'Não informado'
+            if len(grp_cd):
+                pior_cd = grp_cd.index[0]
+                pior_cd_pct = fmt_pct(float(grp_cd.iloc[0]))
+            else:
+                pior_cd = 'Não informado'
+                pior_cd_pct = '0,00%'
         else:
             pior_cd = 'Não informado'
-        if 'Empresa' in base.columns:
-            grp_emp = base.groupby('Empresa').apply(lambda g: calc_metrica(g)['D+1']).sort_values()
-            pior_emp = grp_emp.index[0] if len(grp_emp) else 'Não informado'
-        else:
-            pior_emp = 'Não informado'
-        mes_label = datetime.strptime(mes, '%m/%Y').strftime('%b/%y').title()
-        linhas.append((mes_label, fmt_pct(metrica['D+1']), pior_cd, pior_emp))
+            pior_cd_pct = '0,00%'
+        linhas.append((mes_br(mes), fmt_pct(metrica_mes['D+1']), pior_cd, pior_cd_pct, mes))
     return linhas
 
 
-def construir_visao_grupo(df: pd.DataFrame, coluna: str) -> dict:
-    meses = sorted(df['Mes_Ano'].dropna().unique(), key=lambda x: datetime.strptime(x, '%m/%Y'))
-    mes_atual = meses[-1] if meses else None
-    base = df[df['Mes_Ano'] == mes_atual].copy() if mes_atual else df.head(0).copy()
+def construir_visao_grupo(df: pd.DataFrame, coluna: str, filtro_cd: str | None = None, mes_ref: str | None = None) -> dict:
+    if mes_ref:
+        base = df[df['Mes_Ano'] == mes_ref].copy()
+    else:
+        meses = sorted(df['Mes_Ano'].dropna().unique(), key=lambda x: datetime.strptime(x, '%m/%Y'))
+        mes_atual = meses[-1] if meses else None
+        base = df[df['Mes_Ano'] == mes_atual].copy() if mes_atual else df.head(0).copy()
+    if filtro_cd and 'CD Origem' in base.columns:
+        base = base[base['CD Origem'] == filtro_cd].copy()
 
     geral = calc_metrica(base)
     resultado = {}
@@ -243,31 +213,26 @@ def render_card_titulo(titulo: str, subtitulo: str = ""):
     )
 
 
-def cor_percentual_card(label: str, pct: str) -> str:
-    return cor_por_meta(pct) if label == 'D+1' else COR_NEUTRA
-
-
 def render_metricas_sla(sla_dict: dict, lista_titulo: str):
     c1, c2, c3 = st.columns(3)
     for col, (label, value_dict) in zip([c1, c2, c3], sla_dict.items()):
-        linhas_html = ''.join(
-            [
-                '<div class="metric-line">'
-                f'<span class="metric-name">{nome}</span>'
-                f'<span class="metric-pct notranslate" translate="no" style="color:{cor_percentual_card(label, pct)};">{pct}</span>'
-                '</div>'
-                for nome, pct in value_dict['itens']
-            ]
-        )
-        meta_html = '<div class="metric-meta notranslate" translate="no">Meta atual: 94,1%</div>' if label == 'D+1' else ''
+        linhas_html = ''.join([
+            '<div class="metric-line">'
+            f'<span class="metric-name">{nome}</span>'
+            f'<span class="metric-pct" style="color:{cor_por_meta(pct) if label == "D+1" else COR_NEUTRA};">{pct}</span>'
+            '</div>'
+            for nome, pct in value_dict['itens']
+        ])
+        meta_html = '<div class="metric-meta">Meta atual: 94,1%</div>' if label == 'D+1' else ''
+        geral_cor = cor_por_meta(value_dict['geral']) if label == 'D+1' else COR_NEUTRA
         with col:
             st.markdown(
                 '<div class="metric-box">'
-                f'<div class="metric-label notranslate" translate="no">{label}</div>'
-                f'<div class="metric-value notranslate" translate="no" style="color:{cor_percentual_card(label, value_dict['geral'])};">{value_dict['geral']}</div>'
+                f'<div class="metric-label">{label}</div>'
+                f'<div class="metric-value" style="color:{geral_cor};">{value_dict["geral"]}</div>'
                 f'{meta_html}'
                 '<div class="metric-list">'
-                f'<div class="metric-list-title notranslate" translate="no">{lista_titulo}</div>'
+                f'<div class="metric-list-title">{lista_titulo}</div>'
                 f'{linhas_html}'
                 '</div>'
                 '</div>',
@@ -275,33 +240,36 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str):
             )
 
 
-def render_visao_geral_meses(linhas: list):
-    linhas_html = ''.join(
-        [
-            '<div class="month-line">'
-            f'<span class="month-name notranslate" translate="no">{mes}</span>'
-            f'<span class="month-pct notranslate" translate="no" style="color:{cor_por_meta(sla)};">{sla}</span>'
-            f'<span class="month-cd">{cd}</span>'
-            f'<span class="month-empresa">{empresa}</span>'
-            '</div>'
-            for mes, sla, cd, empresa in linhas
-        ]
-    )
-    html = (
-        '<div class="month-list-box">'
-        '<div class="month-list-title">Separação e Faturamento | Visão Geral</div>'
-        '<div class="month-list-subtitle">Últimos 12 meses do mais atual para o mais antigo.</div>'
-        '<div class="month-highlight notranslate" translate="no">Claro Brasil</div>'
-        '<div class="month-table-card">'
-        '<div class="month-header-offensores"><span></span><span></span><span class="off-label notranslate" translate="no">OFENSORES</span></div>'
-        '<div class="month-header"><span class="notranslate" translate="no">Mês</span><span class="notranslate" translate="no">SLA</span><span class="col-cd notranslate" translate="no">CD</span><span class="col-empresa notranslate" translate="no">Empresa</span></div>'
-        '<div class="month-list">'
-        f'{linhas_html}'
-        '</div>'
-        '</div>'
-        '</div>'
-    )
-    st.markdown(html, unsafe_allow_html=True)
+def render_visao_geral_interativa(linhas: list):
+    with st.container(border=True):
+        st.markdown('<div class="month-title">Separação e Faturamento | Visão Geral</div>', unsafe_allow_html=True)
+        st.markdown('<div class="month-subtitle">Últimos 12 meses do mais atual para o mais antigo.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="month-highlight">Claro Brasil</div>', unsafe_allow_html=True)
+
+        h1, h2, h3, h4 = st.columns([1.15, 0.85, 1, 1])
+        with h1:
+            st.markdown('<div class="header-cell">Mês</div>', unsafe_allow_html=True)
+        with h2:
+            st.markdown('<div class="header-cell">SLA</div>', unsafe_allow_html=True)
+        with h3:
+            st.markdown('<div class="ofensores-label">OFENSORES</div><div class="header-pill">CD</div>', unsafe_allow_html=True)
+        with h4:
+            st.markdown('<div class="ofensores-label">&nbsp;</div><div class="header-pill">% CD Ofensor</div>', unsafe_allow_html=True)
+
+        for idx, (mes_label, sla, cd, pct_cd, mes_original) in enumerate(linhas):
+            c1, c2, c3, c4 = st.columns([1.15, 0.85, 1, 1])
+            with c1:
+                st.markdown(f'<div class="cell-month">{mes_label}</div>', unsafe_allow_html=True)
+            with c2:
+                st.markdown(f'<div class="cell-sla" style="color:{cor_por_meta(sla)};">{sla}</div>', unsafe_allow_html=True)
+            with c3:
+                if st.button(cd, key=f'cd_ofensor_{idx}_{mes_original}', use_container_width=True):
+                    st.session_state.cd_ofensor_selecionado = cd
+                    st.session_state.cd_ofensor_mes = mes_original
+                    st.rerun()
+            with c4:
+                st.markdown(f'<div class="pill-neutro">{pct_cd}</div>', unsafe_allow_html=True)
+            st.markdown('<div class="row-sep"></div>', unsafe_allow_html=True)
 
 
 if 'step' not in st.session_state:
@@ -312,6 +280,10 @@ if 'indicador' not in st.session_state:
     st.session_state.indicador = None
 if 'sf_visao' not in st.session_state:
     st.session_state.sf_visao = None
+if 'cd_ofensor_selecionado' not in st.session_state:
+    st.session_state.cd_ofensor_selecionado = None
+if 'cd_ofensor_mes' not in st.session_state:
+    st.session_state.cd_ofensor_mes = None
 
 base_real = None
 erro_base = None
@@ -351,7 +323,6 @@ elif st.session_state.step == 1:
     if c1.button('Separação e Faturamento', use_container_width=True):
         st.session_state.indicador = 'sf'
         st.session_state.sf_visao = None
-        st.session_state.step = 2
         st.rerun()
     if c2.button('Pedidos para LPs', use_container_width=True):
         st.warning('No momento o fluxo de Pedidos para LPs está em construção.')
@@ -360,7 +331,7 @@ elif st.session_state.step == 1:
     if c4.button('Valores dos EAs', use_container_width=True):
         st.warning('No momento o fluxo de Valores dos EAs está em construção.')
 
-elif st.session_state.step == 2 and st.session_state.indicador == 'sf':
+if st.session_state.indicador == 'sf':
     st.markdown('<div class="menu-info"><strong>Opções disponíveis:</strong><br>Visão Geral | Visão por CDs | Visão por Empresas</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     if c1.button('Visão Geral', use_container_width=True):
@@ -368,14 +339,25 @@ elif st.session_state.step == 2 and st.session_state.indicador == 'sf':
         st.rerun()
     if c2.button('Visão por CDs', use_container_width=True):
         st.session_state.sf_visao = 'cds'
+        st.session_state.cd_ofensor_selecionado = None
         st.rerun()
     if c3.button('Visão por Empresas', use_container_width=True):
         st.session_state.sf_visao = 'empresas'
+        st.session_state.cd_ofensor_selecionado = None
         st.rerun()
 
     if base_real is not None:
         if st.session_state.sf_visao == 'geral':
-            render_visao_geral_meses(construir_visao_geral(base_real))
+            linhas = construir_visao_geral(base_real)
+            render_visao_geral_interativa(linhas)
+            if st.session_state.cd_ofensor_selecionado:
+                cd_sel = st.session_state.cd_ofensor_selecionado
+                mes_sel = st.session_state.cd_ofensor_mes
+                render_card_titulo(
+                    f'Separação e Faturamento | Detalhe por Empresa do CD {cd_sel}',
+                    f'Dados reais do mês {mes_br(mes_sel)} para o CD ofensor selecionado.' if mes_sel else 'Dados reais do CD ofensor selecionado.'
+                )
+                render_metricas_sla(construir_visao_grupo(base_real, 'Empresa', filtro_cd=cd_sel, mes_ref=mes_sel), 'Empresas')
         elif st.session_state.sf_visao == 'cds':
             render_card_titulo('Separação e Faturamento | Visão por CDs | SLA do mês atual', 'Dados reais da base Faturamento SLA 2026.xlsb.')
             render_metricas_sla(construir_visao_grupo(base_real, 'CD Origem'), 'CDs')
@@ -387,13 +369,16 @@ elif st.session_state.step == 2 and st.session_state.indicador == 'sf':
 
     c1, c2 = st.columns(2)
     if c1.button('Voltar aos indicadores', use_container_width=True):
-        st.session_state.step = 1
         st.session_state.indicador = None
         st.session_state.sf_visao = None
+        st.session_state.cd_ofensor_selecionado = None
+        st.session_state.cd_ofensor_mes = None
         st.rerun()
     if c2.button('Reiniciar conversa', use_container_width=True):
         st.session_state.step = 0
         st.session_state.nome = ''
         st.session_state.indicador = None
         st.session_state.sf_visao = None
+        st.session_state.cd_ofensor_selecionado = None
+        st.session_state.cd_ofensor_mes = None
         st.rerun()
