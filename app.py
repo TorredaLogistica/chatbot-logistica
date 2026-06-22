@@ -1,18 +1,30 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
 import os
 from datetime import datetime
+import pandas as pd
+import streamlit as st
 
 st.set_page_config(page_title="Portal Torre Logística", layout="centered")
 
-META_ATUAL = 94.1
 ARQUIVO_BASE = "Faturamento SLA 2026.xlsb"
 COR_NEUTRA = "#1f2937"
 MESES_BR = {
     '01': 'Jan', '02': 'Fev', '03': 'Mar', '04': 'Abr', '05': 'Mai', '06': 'Jun',
     '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez'
 }
+
+# Metas trazidas do dashboard_bi.py
+METAS_CLARO_BRASIL = {
+    "01/2025": 76.09, "02/2025": 74.38, "03/2025": 79.52, "04/2025": 72.28,
+    "05/2025": 81.73, "06/2025": 88.07, "07/2025": 82.91, "08/2025": 89.19,
+    "09/2025": 92.77, "10/2025": 88.68, "11/2025": 82.47, "12/2025": 85.94,
+    "01/2026": 94.45, "02/2026": 94.65, "03/2026": 94.63, "04/2026": 94.93,
+    "05/2026": 94.31, "06/2026": 94.21, "07/2026": 94.36, "08/2026": 95.80,
+    "09/2026": 95.36, "10/2026": 95.47, "11/2026": 95.56, "12/2026": 95.47
+}
+METAS_NET = {"01/2026": 90.00, "02/2026": 90.00, "03/2026": 90.00}
+METAS_CLARO_TV = {"01/2026": 85.02, "02/2026": 85.11, "03/2026": 85.19}
+METAS_EMBRATEL = {"01/2026": 80.00, "02/2026": 80.00, "03/2026": 80.01}
+METAS_CLARO_MOVEL = {"01/2026": 99.50, "02/2026": 99.50, "03/2026": 99.50}
 
 st.markdown(
     """
@@ -47,15 +59,9 @@ st.markdown(
     .metric-label { font-size: 12px; color: #667781; margin-bottom: 4px; }
     .metric-value { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
     .metric-meta { font-size: 12px; font-weight: 700; color: #667781; margin-bottom: 8px; }
-    .metric-list {
-        margin-top: 10px; padding-top: 8px; border-top: 1px solid #e6e6e6; text-align: left;
-    }
-    .metric-list-title {
-        font-size: 11px; color: #667781; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.02em;
-    }
-    .metric-line {
-        display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 2px 0; line-height: 1.45;
-    }
+    .metric-list { margin-top: 10px; padding-top: 8px; border-top: 1px solid #e6e6e6; text-align: left; }
+    .metric-list-title { font-size: 11px; color: #667781; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.02em; }
+    .metric-line { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 2px 0; line-height: 1.45; }
     .metric-name { font-weight: 600; color: #1f2937; }
     .metric-pct { font-weight: 700; }
     .month-list-box {
@@ -130,9 +136,9 @@ def mes_br(mm_yyyy: str) -> str:
     return f"{MESES_BR.get(mm, mm)}/{yyyy[-2:]}"
 
 
-def cor_por_meta(valor_pct: str) -> str:
+def cor_por_meta(valor_pct: str, meta: float) -> str:
     valor = float(str(valor_pct).replace('%', '').replace(',', '.'))
-    return '#1b5e20' if valor >= META_ATUAL else '#9c1c1c'
+    return '#1b5e20' if valor >= meta else '#9c1c1c'
 
 
 def fmt_pct(valor: float) -> str:
@@ -142,9 +148,21 @@ def fmt_pct(valor: float) -> str:
 def normalizar_categoria(s: pd.Series, valor_padrao='Não informado') -> pd.Series:
     s = (s.fillna(valor_padrao)
            .astype(str)
-           .str.replace(' ', '', regex=False)
+           .str.replace('\u00A0', '', regex=False)
            .str.strip())
     return s.replace({'': valor_padrao, 'nan': valor_padrao, 'NaN': valor_padrao, 'None': valor_padrao, '<NA>': valor_padrao, 'undefined': valor_padrao})
+
+
+def meta_empresa_mes(mes: str, empresa: str | None = None) -> float:
+    if empresa == 'NET':
+        return METAS_NET.get(mes, METAS_CLARO_BRASIL.get(mes, 85.0))
+    if empresa == 'Claro TV':
+        return METAS_CLARO_TV.get(mes, METAS_CLARO_BRASIL.get(mes, 85.0))
+    if empresa == 'Embratel':
+        return METAS_EMBRATEL.get(mes, METAS_CLARO_BRASIL.get(mes, 85.0))
+    if empresa == 'Claro Movel':
+        return METAS_CLARO_MOVEL.get(mes, METAS_CLARO_BRASIL.get(mes, 85.0))
+    return METAS_CLARO_BRASIL.get(mes, 85.0)
 
 
 @st.cache_data(show_spinner=False)
@@ -211,7 +229,8 @@ def construir_visao_geral(df: pd.DataFrame) -> list:
             pior_cd = 'Não informado'
             pior_cd_pct = '0,00%'
         mes_label = mes_br(mes)
-        linhas.append((mes_label, fmt_pct(metrica['D+1']), pior_cd, pior_cd_pct))
+        meta_mes = meta_empresa_mes(mes)
+        linhas.append((mes_label, fmt_pct(metrica['D+1']), pior_cd, pior_cd_pct, meta_mes))
     return linhas
 
 
@@ -219,16 +238,17 @@ def construir_visao_grupo(df: pd.DataFrame, coluna: str) -> dict:
     meses = sorted(df['Mes_Ano'].dropna().unique(), key=lambda x: datetime.strptime(x, '%m/%Y'))
     mes_atual = meses[-1] if meses else None
     base = df[df['Mes_Ano'] == mes_atual].copy() if mes_atual else df.head(0).copy()
-    geral = calc_metrica(base)
+    meta_atual = meta_empresa_mes(mes_atual) if mes_atual else 85.0
     resultado = {}
     for chave in ['D+0', 'D+1', 'D+2']:
         itens = []
         if coluna in base.columns:
             for nome, grp in base.groupby(coluna):
                 m = calc_metrica(grp)[chave]
-                itens.append((str(nome), fmt_pct(m)))
+                meta_item = meta_empresa_mes(mes_atual, str(nome)) if (coluna == 'Empresa' and mes_atual and chave == 'D+1') else None
+                itens.append((str(nome), fmt_pct(m), meta_item))
             itens = sorted(itens, key=lambda x: float(x[1].replace('%', '').replace(',', '.')))
-        resultado[chave] = {'geral': fmt_pct(geral[chave]), 'itens': itens}
+        resultado[chave] = {'geral': fmt_pct(calc_metrica(base)[chave]), 'itens': itens, 'meta_atual': meta_atual, 'mes_atual': mes_atual}
     return resultado
 
 
@@ -242,24 +262,39 @@ def render_card_titulo(titulo: str, subtitulo: str = ""):
     )
 
 
-def cor_percentual_card(label: str, pct: str) -> str:
-    return cor_por_meta(pct) if label == 'D+1' else COR_NEUTRA
+def cor_percentual_card(label: str, pct: str, meta: float) -> str:
+    return cor_por_meta(pct, meta) if label == 'D+1' else COR_NEUTRA
 
 
-def render_metricas_sla(sla_dict: dict, lista_titulo: str):
+def render_metricas_sla(sla_dict: dict, lista_titulo: str, coluna: str):
     c1, c2, c3 = st.columns(3)
     for col, (label, value_dict) in zip([c1, c2, c3], sla_dict.items()):
-        linhas_html = ''.join(
-            [
+        meta_atual = value_dict.get('meta_atual', 85.0)
+        mes_atual = value_dict.get('mes_atual')
+        linhas_html = ''
+        if coluna == 'Empresa' and label == 'D+1':
+            linhas_html += '<div class="metric-line" style="font-weight:800;border-bottom:1px solid #e6e6e6;padding-bottom:4px;margin-bottom:4px;"><span class="metric-name">Empresa</span><span class="metric-pct">SLA</span><span class="metric-pct">Meta</span></div>'
+            for nome, pct, meta_item in value_dict['itens']:
+                meta_txt = fmt_pct(meta_item if meta_item is not None else meta_atual)
+                cor = cor_percentual_card(label, pct, meta_item if meta_item is not None else meta_atual)
+                linhas_html += (
+                    '<div class="metric-line">'
+                    f'<span class="metric-name">{nome}</span>'
+                    f'<span class="metric-pct" style="color:{cor};">{pct}</span>'
+                    f'<span class="metric-pct">{meta_txt}</span>'
+                    '</div>'
+                )
+        else:
+            linhas_html = ''.join([
                 '<div class="metric-line">'
                 f'<span class="metric-name">{nome}</span>'
-                f'<span class="metric-pct notranslate" translate="no" style="color:{cor_percentual_card(label, pct)};">{pct}</span>'
+                f'<span class="metric-pct notranslate" translate="no" style="color:{cor_percentual_card(label, pct, meta_atual)};">{pct}</span>'
                 '</div>'
-                for nome, pct in value_dict['itens']
-            ]
-        )
-        meta_html = '<div class="metric-meta notranslate" translate="no">Meta atual: 94,1%</div>' if label == 'D+1' else ''
-        geral_cor = cor_percentual_card(label, value_dict['geral'])
+                for nome, pct, _meta in value_dict['itens']
+            ])
+
+        meta_html = f'<div class="metric-meta notranslate" translate="no">Meta atual: {fmt_pct(meta_atual)} ({mes_br(mes_atual)})</div>' if (label == 'D+1' and mes_atual) else ''
+        geral_cor = cor_percentual_card(label, value_dict['geral'], meta_atual)
         with col:
             st.markdown(
                 '<div class="metric-box">'
@@ -280,11 +315,11 @@ def render_visao_geral_meses(linhas: list):
         [
             '<div class="month-line">'
             f'<span class="month-name notranslate" translate="no">{mes}</span>'
-            f'<span class="month-pct notranslate" translate="no" style="color:{cor_por_meta(sla)};">{sla}</span>'
+            f'<span class="month-pct notranslate" translate="no" style="color:{cor_por_meta(sla, meta_mes)};">{sla}</span>'
             f'<span class="month-cd">{cd}</span>'
             f'<span class="month-pct-cd notranslate" translate="no">{pct_cd}</span>'
             '</div>'
-            for mes, sla, cd, pct_cd in linhas
+            for mes, sla, cd, pct_cd, meta_mes in linhas
         ]
     )
     html = (
@@ -378,10 +413,10 @@ elif st.session_state.step == 2 and st.session_state.indicador == 'sf':
             render_visao_geral_meses(construir_visao_geral(base_real))
         elif st.session_state.sf_visao == 'cds':
             render_card_titulo('Separação e Faturamento | Visão por CDs | SLA do mês atual', 'Dados reais da base Faturamento SLA 2026.xlsb.')
-            render_metricas_sla(construir_visao_grupo(base_real, 'CD Origem'), 'CDs')
+            render_metricas_sla(construir_visao_grupo(base_real, 'CD Origem'), 'CDs', 'CD Origem')
         elif st.session_state.sf_visao == 'empresas':
             render_card_titulo('Separação e Faturamento | Visão por Empresas | SLA do mês atual', 'Dados reais da base Faturamento SLA 2026.xlsb.')
-            render_metricas_sla(construir_visao_grupo(base_real, 'Empresa'), 'Empresas')
+            render_metricas_sla(construir_visao_grupo(base_real, 'Empresa'), 'Empresas', 'Empresa')
     else:
         st.error('Não foi possível carregar a base real. Verifique se o arquivo .xlsb está na raiz do repositório e se o requirements contém pyxlsb.')
 
