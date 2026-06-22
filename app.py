@@ -12,7 +12,7 @@ MESES_BR = {
     '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez'
 }
 
-# Metas do dashboard_bi.py
+# Metas trazidas do dashboard_bi.py
 METAS_CLARO_BRASIL = {
     "01/2025": 76.09, "02/2025": 74.38, "03/2025": 79.52, "04/2025": 72.28,
     "05/2025": 81.73, "06/2025": 88.07, "07/2025": 82.91, "08/2025": 89.19,
@@ -32,7 +32,6 @@ st.markdown(
     <style>
     .stApp { background: #efeae2; }
     .main .block-container { max-width: 1120px; padding-top: 1rem; padding-bottom: 1rem; }
-
     .topbar {
         background: linear-gradient(90deg, #075E54 0%, #0b6d62 100%);
         color: white; padding: 14px 16px; border-radius: 14px; margin-bottom: 14px;
@@ -44,7 +43,6 @@ st.markdown(
     }
     .topbar-title { font-size: 18px; font-weight: 700; line-height: 1.2; margin: 0; }
     .topbar-subtitle { font-size: 12px; opacity: 0.92; margin-top: 2px; }
-
     .menu-info {
         background: #ffffff; padding: 10px 12px; border-radius: 10px; margin: 8px 0 14px 0;
         border-left: 4px solid #25D366; box-shadow: 0 1px 2px rgba(0,0,0,0.06);
@@ -55,7 +53,6 @@ st.markdown(
     }
     .card-title { font-size: 18px; font-weight: 700; color: #075E54; margin-bottom: 6px; }
     .card-subtitle { font-size: 12px; color: #667781; margin-bottom: 14px; }
-
     .metric-box {
         background: #f7f7f7; border: 1px solid #e3e3e3; border-radius: 12px; padding: 12px;
         text-align: center; min-height: 290px; display: flex; flex-direction: column; justify-content: flex-start;
@@ -68,32 +65,6 @@ st.markdown(
     .metric-line { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 2px 0; line-height: 1.45; }
     .metric-name { font-weight: 600; color: #1f2937; }
     .metric-pct { font-weight: 700; }
-
-    /* Ajuste fino da Visão Empresas D+1 */
-    .metric-line-empresa-head,
-    .metric-line-empresa {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 96px 96px;
-        gap: 8px;
-        align-items: center;
-        font-size: 12px;
-        line-height: 1.45;
-    }
-    .metric-line-empresa-head {
-        font-weight: 800;
-        border-bottom: 1px solid #e6e6e6;
-        padding-bottom: 4px;
-        margin-bottom: 4px;
-    }
-    .metric-col-sla, .metric-col-meta,
-    .metric-col-sla-head, .metric-col-meta-head {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        width: 100%;
-    }
-
     .month-list-box {
         background: #ffffff; border-radius: 14px; padding: 16px; margin-top: 10px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.08); border: 1px solid #e6e6e6;
@@ -141,7 +112,6 @@ st.markdown(
         background: rgba(7, 94, 84, 0.06); border-radius: 8px; padding: 4px 8px;
     }
     .notranslate { white-space: nowrap; }
-
     @media (max-width: 768px) {
         .main .block-container { max-width: 100% !important; padding-left: 0.7rem; padding-right: 0.7rem; }
         .topbar { padding: 12px 14px; }
@@ -150,10 +120,7 @@ st.markdown(
         .month-header-offensores, .month-header { font-size: 10px; gap: 6px; }
         .month-line { font-size: 12px; gap: 6px; }
         .month-cd, .month-pct-cd, .month-header .col-cd, .month-header .col-pct-cd { padding: 4px 6px; }
-        .metric-line-empresa-head,
-        .metric-line-empresa { grid-template-columns: minmax(0, 1fr) 76px 76px; gap: 6px; }
     }
-
     div.stButton > button {
         border-radius: 10px !important; border: 1px solid #d0d7de !important; min-height: 42px !important;
         font-weight: 600 !important; background: white !important;
@@ -180,7 +147,10 @@ def fmt_pct(valor: float) -> str:
 
 
 def normalizar_categoria(s: pd.Series, valor_padrao='Não informado') -> pd.Series:
-    s = (s.fillna(valor_padrao).astype(str).str.replace('\u00A0', '', regex=False).str.strip())
+    s = (s.fillna(valor_padrao)
+           .astype(str)
+           .str.replace('\u00A0', '', regex=False)
+           .str.strip())
     return s.replace({'': valor_padrao, 'nan': valor_padrao, 'NaN': valor_padrao, 'None': valor_padrao, '<NA>': valor_padrao, 'undefined': valor_padrao})
 
 
@@ -259,8 +229,8 @@ def construir_visao_geral(df: pd.DataFrame) -> list:
         else:
             pior_cd = 'Não informado'
             pior_cd_pct = '0,00%'
-        meta_mes = meta_empresa_mes(mes)
         mes_label = mes_br(mes)
+        meta_mes = meta_empresa_mes(mes)
         linhas.append((mes_label, fmt_pct(metrica['D+1']), pior_cd, pior_cd_pct, meta_mes))
     return linhas
 
@@ -269,7 +239,6 @@ def construir_visao_grupo(df: pd.DataFrame, coluna: str) -> dict:
     meses = sorted(df['Mes_Ano'].dropna().unique(), key=lambda x: datetime.strptime(x, '%m/%Y'))
     mes_atual = meses[-1] if meses else None
     base = df[df['Mes_Ano'] == mes_atual].copy() if mes_atual else df.head(0).copy()
-    metrica_base = calc_metrica(base)
     meta_atual = meta_empresa_mes(mes_atual) if mes_atual else 85.0
     resultado = {}
     for chave in ['D+0', 'D+1', 'D+2']:
@@ -280,12 +249,7 @@ def construir_visao_grupo(df: pd.DataFrame, coluna: str) -> dict:
                 meta_item = meta_empresa_mes(mes_atual, str(nome)) if (coluna == 'Empresa' and mes_atual and chave == 'D+1') else None
                 itens.append((str(nome), fmt_pct(m), meta_item))
             itens = sorted(itens, key=lambda x: float(x[1].replace('%', '').replace(',', '.')))
-        resultado[chave] = {
-            'geral': fmt_pct(metrica_base[chave]),
-            'itens': itens,
-            'meta_atual': meta_atual,
-            'mes_atual': mes_atual
-        }
+        resultado[chave] = {'geral': fmt_pct(calc_metrica(base)[chave]), 'itens': itens, 'meta_atual': meta_atual, 'mes_atual': mes_atual}
     return resultado
 
 
@@ -310,22 +274,15 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str, coluna: str):
         mes_atual = value_dict.get('mes_atual')
         linhas_html = ''
         if coluna == 'Empresa' and label == 'D+1':
-            linhas_html += (
-                '<div class="metric-line-empresa-head">'
-                '<span class="metric-name">Empresa</span>'
-                '<span class="metric-col-sla-head">SLA</span>'
-                '<span class="metric-col-meta-head">Meta</span>'
-                '</div>'
-            )
+            linhas_html += '<div class="metric-line" style="font-weight:800;border-bottom:1px solid #e6e6e6;padding-bottom:4px;margin-bottom:4px;"><span class="metric-name">Empresa</span><span class="metric-pct">SLA</span><span class="metric-pct">Meta</span></div>'
             for nome, pct, meta_item in value_dict['itens']:
-                meta_ref = meta_item if meta_item is not None else meta_atual
-                meta_txt = fmt_pct(meta_ref)
-                cor = cor_percentual_card(label, pct, meta_ref)
+                meta_txt = fmt_pct(meta_item if meta_item is not None else meta_atual)
+                cor = cor_percentual_card(label, pct, meta_item if meta_item is not None else meta_atual)
                 linhas_html += (
-                    '<div class="metric-line-empresa">'
+                    '<div class="metric-line">'
                     f'<span class="metric-name">{nome}</span>'
-                    f'<span class="metric-col-sla metric-pct" style="color:{cor};">{pct}</span>'
-                    f'<span class="metric-col-meta metric-pct">{meta_txt}</span>'
+                    f'<span class="metric-pct" style="color:{cor};">{pct}</span>'
+                    f'<span class="metric-pct">{meta_txt}</span>'
                     '</div>'
                 )
         else:
