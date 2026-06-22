@@ -12,6 +12,7 @@ MESES_BR = {
     '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez'
 }
 
+# Metas do dashboard_bi.py
 METAS_CLARO_BRASIL = {
     "01/2025": 76.09, "02/2025": 74.38, "03/2025": 79.52, "04/2025": 72.28,
     "05/2025": 81.73, "06/2025": 88.07, "07/2025": 82.91, "08/2025": 89.19,
@@ -62,48 +63,42 @@ st.markdown(
     .metric-label { font-size: 12px; color: #667781; margin-bottom: 4px; }
     .metric-value { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
     .metric-meta { font-size: 12px; font-weight: 700; color: #667781; margin-bottom: 8px; }
-    .metric-list { margin-top: 10px; padding-top: 8px; border-top: 1px solid #e6e6e6; text-align: left; }
-    .metric-list-title { font-size: 11px; color: #667781; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.02em; }
-    .metric-line { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 2px 0; line-height: 1.45; }
+    .metric-list {
+        margin-top: 10px; padding-top: 8px; border-top: 1px solid #e6e6e6; text-align: left;
+    }
+    .metric-list-title {
+        font-size: 11px; color: #667781; font-weight: 700; margin-bottom: 6px;
+        text-transform: uppercase; letter-spacing: 0.02em;
+    }
+    .metric-line {
+        display: flex; justify-content: space-between; gap: 8px; font-size: 12px;
+        padding: 2px 0; line-height: 1.45;
+    }
     .metric-name { font-weight: 600; color: #1f2937; }
     .metric-pct { font-weight: 700; }
 
-    /* EMPRESAS D+1 sem quebra */
-    .metric-line-empresa-head,
-    .metric-line-empresa {
-        display: grid;
-        grid-template-columns: minmax(150px, 1fr) 88px 88px;
-        gap: 8px;
-        align-items: center;
-        font-size: 12px;
-        line-height: 1.45;
+    /* Tabela fixa para evitar quebra da coluna Empresa no D+1 */
+    .empresa-table-wrap { width: 100%; margin-top: 2px; }
+    .empresa-table {
+        width: 100%; border-collapse: collapse; table-layout: fixed;
+        font-size: 12px; line-height: 1.45;
     }
-    .metric-line-empresa-head {
-        font-weight: 800;
-        border-bottom: 1px solid #e6e6e6;
-        padding-bottom: 4px;
-        margin-bottom: 4px;
+    .empresa-table col:nth-child(1) { width: 48%; }
+    .empresa-table col:nth-child(2) { width: 26%; }
+    .empresa-table col:nth-child(3) { width: 26%; }
+    .empresa-table th {
+        text-align: left; font-weight: 800; padding: 0 0 6px 0; border-bottom: 1px solid #e6e6e6;
     }
-    .metric-name-empresa,
-    .metric-name-empresa-head {
-        text-align: left;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        min-width: 0;
-        font-weight: 600;
-        color: #1f2937;
-    }
-    .metric-name-empresa-head { font-weight: 800; }
-    .metric-col-sla, .metric-col-meta,
-    .metric-col-sla-head, .metric-col-meta-head {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
+    .empresa-table th:nth-child(2), .empresa-table th:nth-child(3),
+    .empresa-table td:nth-child(2), .empresa-table td:nth-child(3) {
         text-align: right;
-        white-space: nowrap;
-        width: 100%;
-        font-weight: 700;
+    }
+    .empresa-table td {
+        padding: 3px 0; vertical-align: middle;
+    }
+    .empresa-table td:first-child {
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;
+        font-weight: 600; color: #1f2937;
     }
 
     .month-list-box {
@@ -162,8 +157,10 @@ st.markdown(
         .month-header-offensores, .month-header { font-size: 10px; gap: 6px; }
         .month-line { font-size: 12px; gap: 6px; }
         .month-cd, .month-pct-cd, .month-header .col-cd, .month-header .col-pct-cd { padding: 4px 6px; }
-        .metric-line-empresa-head,
-        .metric-line-empresa { grid-template-columns: minmax(110px, 1fr) 72px 72px; gap: 6px; }
+        .empresa-table { font-size: 11px; }
+        .empresa-table col:nth-child(1) { width: 44%; }
+        .empresa-table col:nth-child(2) { width: 28%; }
+        .empresa-table col:nth-child(3) { width: 28%; }
     }
 
     div.stButton > button {
@@ -322,24 +319,27 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str, coluna: str):
         mes_atual = value_dict.get('mes_atual')
         linhas_html = ''
         if coluna == 'Empresa' and label == 'D+1':
-            linhas_html += (
-                '<div class="metric-line-empresa-head">'
-                '<span class="metric-name-empresa-head">Empresa</span>'
-                '<span class="metric-col-sla-head">SLA</span>'
-                '<span class="metric-col-meta-head">Meta</span>'
-                '</div>'
+            header_html = (
+                '<div class="empresa-table-wrap">'
+                '<table class="empresa-table">'
+                '<colgroup><col><col><col></colgroup>'
+                '<thead><tr>'
+                '<th>Empresa</th><th>SLA</th><th>Meta</th>'
+                '</tr></thead><tbody>'
             )
+            rows_html = []
             for nome, pct, meta_item in value_dict['itens']:
                 meta_ref = meta_item if meta_item is not None else meta_atual
                 meta_txt = fmt_pct(meta_ref)
                 cor = cor_percentual_card(label, pct, meta_ref)
-                linhas_html += (
-                    '<div class="metric-line-empresa">'
-                    f'<span class="metric-name-empresa">{nome}</span>'
-                    f'<span class="metric-col-sla metric-pct" style="color:{cor};">{pct}</span>'
-                    f'<span class="metric-col-meta metric-pct">{meta_txt}</span>'
-                    '</div>'
+                rows_html.append(
+                    '<tr>'
+                    f'<td>{nome}</td>'
+                    f'<td style="color:{cor};font-weight:700;">{pct}</td>'
+                    f'<td style="font-weight:700;">{meta_txt}</td>'
+                    '</tr>'
                 )
+            linhas_html = header_html + ''.join(rows_html) + '</tbody></table></div>'
         else:
             linhas_html = ''.join([
                 '<div class="metric-line">'
@@ -488,3 +488,4 @@ elif st.session_state.step == 2 and st.session_state.indicador == 'sf':
         st.session_state.indicador = None
         st.session_state.sf_visao = None
         st.rerun()
+
