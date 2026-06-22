@@ -77,28 +77,47 @@ st.markdown(
     .metric-name { font-weight: 600; color: #1f2937; }
     .metric-pct { font-weight: 700; }
 
-    /* Tabela fixa para evitar quebra da coluna Empresa no D+1 */
-    .empresa-table-wrap { width: 100%; margin-top: 2px; }
-    .empresa-table {
-        width: 100%; border-collapse: collapse; table-layout: fixed;
-        font-size: 12px; line-height: 1.45;
+    /* D+1 Empresas no mesmo padrão visual das demais visões, sem tabela */
+    .metric-line-empresa-head,
+    .metric-line-empresa-row {
+        display: grid;
+        grid-template-columns: minmax(132px, 1fr) 82px 82px;
+        gap: 8px;
+        align-items: center;
+        font-size: 12px;
+        line-height: 1.45;
     }
-    .empresa-table col:nth-child(1) { width: 48%; }
-    .empresa-table col:nth-child(2) { width: 26%; }
-    .empresa-table col:nth-child(3) { width: 26%; }
-    .empresa-table th {
-        text-align: left; font-weight: 800; padding: 0 0 6px 0; border-bottom: 1px solid #e6e6e6;
+    .metric-line-empresa-head {
+        padding: 2px 0 4px 0;
+        margin-bottom: 4px;
+        border-bottom: 1px solid #e6e6e6;
+        font-weight: 800;
+        color: #1f2937;
     }
-    .empresa-table th:nth-child(2), .empresa-table th:nth-child(3),
-    .empresa-table td:nth-child(2), .empresa-table td:nth-child(3) {
+    .metric-line-empresa-row {
+        padding: 2px 0;
+    }
+    .metric-empresa-col {
+        text-align: left;
+        white-space: nowrap !important;
+        word-break: keep-all !important;
+        overflow-wrap: normal !important;
+        writing-mode: horizontal-tb !important;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+        font-weight: 600;
+        color: #1f2937;
+    }
+    .metric-sla-head, .metric-meta-head {
+        text-align: center;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+    .metric-sla-col, .metric-meta-col {
         text-align: right;
-    }
-    .empresa-table td {
-        padding: 3px 0; vertical-align: middle;
-    }
-    .empresa-table td:first-child {
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;
-        font-weight: 600; color: #1f2937;
+        white-space: nowrap;
+        font-weight: 700;
     }
 
     .month-list-box {
@@ -157,10 +176,8 @@ st.markdown(
         .month-header-offensores, .month-header { font-size: 10px; gap: 6px; }
         .month-line { font-size: 12px; gap: 6px; }
         .month-cd, .month-pct-cd, .month-header .col-cd, .month-header .col-pct-cd { padding: 4px 6px; }
-        .empresa-table { font-size: 11px; }
-        .empresa-table col:nth-child(1) { width: 44%; }
-        .empresa-table col:nth-child(2) { width: 28%; }
-        .empresa-table col:nth-child(3) { width: 28%; }
+        .metric-line-empresa-head,
+        .metric-line-empresa-row { grid-template-columns: minmax(108px, 1fr) 70px 70px; gap: 6px; }
     }
 
     div.stButton > button {
@@ -317,29 +334,25 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str, coluna: str):
     for col, (label, value_dict) in zip([c1, c2, c3], sla_dict.items()):
         meta_atual = value_dict.get('meta_atual', 85.0)
         mes_atual = value_dict.get('mes_atual')
-        linhas_html = ''
         if coluna == 'Empresa' and label == 'D+1':
-            header_html = (
-                '<div class="empresa-table-wrap">'
-                '<table class="empresa-table">'
-                '<colgroup><col><col><col></colgroup>'
-                '<thead><tr>'
-                '<th>Empresa</th><th>SLA</th><th>Meta</th>'
-                '</tr></thead><tbody>'
+            linhas_html = (
+                '<div class="metric-line-empresa-head">'
+                '<span class="metric-empresa-col">Empresa</span>'
+                '<span class="metric-sla-head">SLA</span>'
+                '<span class="metric-meta-head">Meta</span>'
+                '</div>'
             )
-            rows_html = []
             for nome, pct, meta_item in value_dict['itens']:
                 meta_ref = meta_item if meta_item is not None else meta_atual
                 meta_txt = fmt_pct(meta_ref)
                 cor = cor_percentual_card(label, pct, meta_ref)
-                rows_html.append(
-                    '<tr>'
-                    f'<td>{nome}</td>'
-                    f'<td style="color:{cor};font-weight:700;">{pct}</td>'
-                    f'<td style="font-weight:700;">{meta_txt}</td>'
-                    '</tr>'
+                linhas_html += (
+                    '<div class="metric-line-empresa-row">'
+                    f'<span class="metric-empresa-col">{nome}</span>'
+                    f'<span class="metric-sla-col" style="color:{cor};">{pct}</span>'
+                    f'<span class="metric-meta-col">{meta_txt}</span>'
+                    '</div>'
                 )
-            linhas_html = header_html + ''.join(rows_html) + '</tbody></table></div>'
         else:
             linhas_html = ''.join([
                 '<div class="metric-line">'
@@ -488,4 +501,3 @@ elif st.session_state.step == 2 and st.session_state.indicador == 'sf':
         st.session_state.indicador = None
         st.session_state.sf_visao = None
         st.rerun()
-
