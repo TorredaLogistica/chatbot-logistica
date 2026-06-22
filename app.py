@@ -1,17 +1,20 @@
-
 import streamlit as st
+import pandas as pd
+import numpy as np
+import os
+from pathlib import Path
 from datetime import datetime
 
 st.set_page_config(page_title="Portal Torre Logística", layout="centered")
 
 META_ATUAL = 94.1
+ARQUIVO_BASE = "Faturamento SLA 2026.xlsb"
 
 st.markdown(
     """
     <style>
     .stApp { background: #efeae2; }
     .main .block-container { max-width: 1120px; padding-top: 1rem; padding-bottom: 1rem; }
-
     .topbar {
         background: linear-gradient(90deg, #075E54 0%, #0b6d62 100%);
         color: white; padding: 14px 16px; border-radius: 14px; margin-bottom: 14px;
@@ -23,19 +26,16 @@ st.markdown(
     }
     .topbar-title { font-size: 18px; font-weight: 700; line-height: 1.2; margin: 0; }
     .topbar-subtitle { font-size: 12px; opacity: 0.92; margin-top: 2px; }
-
     .menu-info {
         background: #ffffff; padding: 10px 12px; border-radius: 10px; margin: 8px 0 14px 0;
         border-left: 4px solid #25D366; box-shadow: 0 1px 2px rgba(0,0,0,0.06);
     }
-
     .card-wrap {
         background: #ffffff; border-radius: 14px; padding: 16px; margin-top: 10px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.08); border: 1px solid #e6e6e6;
     }
     .card-title { font-size: 18px; font-weight: 700; color: #075E54; margin-bottom: 6px; }
     .card-subtitle { font-size: 12px; color: #667781; margin-bottom: 14px; }
-
     .metric-box {
         background: #f7f7f7; border: 1px solid #e3e3e3; border-radius: 12px; padding: 12px;
         text-align: center; min-height: 290px; display: flex; flex-direction: column; justify-content: flex-start;
@@ -54,7 +54,6 @@ st.markdown(
     }
     .metric-name { font-weight: 600; color: #1f2937; }
     .metric-pct { font-weight: 700; }
-
     .month-list-box {
         background: #ffffff; border-radius: 14px; padding: 16px; margin-top: 10px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.08); border: 1px solid #e6e6e6;
@@ -102,7 +101,6 @@ st.markdown(
         background: rgba(7, 94, 84, 0.06); border-radius: 8px; padding: 4px 8px;
     }
     .notranslate { white-space: nowrap; }
-
     @media (max-width: 768px) {
         .main .block-container { max-width: 100% !important; padding-left: 0.7rem; padding-right: 0.7rem; }
         .topbar { padding: 12px 14px; }
@@ -110,11 +108,8 @@ st.markdown(
         .card-title, .month-list-title { font-size: 16px; }
         .month-header-offensores, .month-header { font-size: 10px; gap: 6px; }
         .month-line { font-size: 12px; gap: 6px; }
-        .month-cd, .month-empresa, .month-header .col-cd, .month-header .col-empresa {
-            padding: 4px 6px;
-        }
+        .month-cd, .month-empresa, .month-header .col-cd, .month-header .col-empresa { padding: 4px 6px; }
     }
-
     div.stButton > button {
         border-radius: 10px !important; border: 1px solid #d0d7de !important; min-height: 42px !important;
         font-weight: 600 !important; background: white !important;
@@ -127,41 +122,117 @@ st.markdown(
 
 
 def cor_por_meta(valor_pct: str) -> str:
-    valor = float(valor_pct.replace('%', '').replace(',', '.'))
+    valor = float(str(valor_pct).replace('%', '').replace(',', '.'))
     return '#1b5e20' if valor >= META_ATUAL else '#9c1c1c'
 
 
-def sf_get_visao_geral_meses():
-    return [
-        ("Jun/26", "97,8%", "Barueri", "Net"),
-        ("Mai/26", "95,3%", "Jaboatão", "Embratel"),
-        ("Abr/26", "94,2%", "Rio de Janeiro", "Claro Fixo"),
-        ("Mar/26", "96,1%", "Salvador", "Net"),
-        ("Fev/26", "95,8%", "Manaus", "Claro TV"),
-        ("Jan/26", "94,7%", "Barueri", "Embratel"),
-        ("Dez/25", "93,9%", "Brasília", "Net"),
-        ("Nov/25", "95,0%", "Palhoça", "Claro Fixo"),
-        ("Out/25", "94,4%", "Campinas", "Net"),
-        ("Set/25", "93,6%", "Contagem", "Embratel"),
-        ("Ago/25", "92,9%", "Rio de Janeiro", "Claro TV"),
-        ("Jul/25", "94,0%", "Jaboatão", "Net"),
-    ]
+def fmt_pct(valor: float) -> str:
+    return f"{valor:.1f}%".replace('.', ',')
 
 
-def sf_get_sla_cds():
-    return {
-        "D+0": {"geral": "92,4%", "itens": [("Rio de Janeiro", "89,4%"), ("Jaboatão", "90,1%"), ("Salvador", "90,9%"), ("Manaus", "91,0%"), ("Barueri", "91,7%"), ("Brasília", "92,4%"), ("Palhoça", "93,0%"), ("Campinas", "93,2%"), ("Contagem", "93,5%")]},
-        "D+1": {"geral": "97,8%", "itens": [("Salvador", "94,5%"), ("Manaus", "95,0%"), ("Jaboatão", "95,2%"), ("Rio de Janeiro", "95,9%"), ("Barueri", "96,8%"), ("Brasília", "97,1%"), ("Palhoça", "97,4%"), ("Contagem", "97,9%"), ("Campinas", "98,4%")]},
-        "D+2": {"geral": "99,1%", "itens": [("Salvador", "98,2%"), ("Manaus", "98,4%"), ("Jaboatão", "98,6%"), ("Rio de Janeiro", "98,8%"), ("Barueri", "98,9%"), ("Brasília", "99,0%"), ("Palhoça", "99,1%"), ("Contagem", "99,3%"), ("Campinas", "99,4%")]},
-    }
+def normalizar_categoria(s: pd.Series, valor_padrao='Não informado') -> pd.Series:
+    s = (s.fillna(valor_padrao)
+           .astype(str)
+           .str.replace('\u00A0', '', regex=False)
+           .str.strip())
+    return s.replace({'': valor_padrao, 'nan': valor_padrao, 'NaN': valor_padrao, 'None': valor_padrao, '<NA>': valor_padrao, 'undefined': valor_padrao})
 
 
-def sf_get_sla_empresas():
-    return {
-        "D+0": {"geral": "92,4%", "itens": [("Net", "90,8%"), ("Embratel", "91,3%"), ("Claro Fixo", "91,7%"), ("Claro TV", "92,6%"), ("Claro Móvel", "93,4%")]},
-        "D+1": {"geral": "97,8%", "itens": [("Net", "94,6%"), ("Embratel", "95,8%"), ("Claro Fixo", "96,9%"), ("Claro TV", "97,6%"), ("Claro Móvel", "98,3%")]},
-        "D+2": {"geral": "99,1%", "itens": [("Net", "98,4%"), ("Embratel", "98,8%"), ("Claro Fixo", "99,0%"), ("Claro TV", "99,2%"), ("Claro Móvel", "99,5%")]},
-    }
+@st.cache_data(show_spinner=False)
+def carregar_base_real(path: str) -> pd.DataFrame:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Arquivo {path} não encontrado na raiz do repositório.")
+
+    df = pd.read_excel(path, engine='pyxlsb')
+    df.columns = df.columns.str.strip()
+
+    if 'Pedido' not in df.columns and 'Pedidos' in df.columns:
+        df['Pedido'] = df['Pedidos']
+
+    for col in ['CD Origem', 'Empresa', 'Canal de Atuacao', 'Canal', 'Operador', 'Unidade de Negocio']:
+        if col in df.columns:
+            df[col] = normalizar_categoria(df[col])
+
+    if 'Data NF' not in df.columns:
+        raise KeyError("Coluna 'Data NF' não encontrada na base.")
+    if 'Aging_Ajustado_D+' not in df.columns:
+        raise KeyError("Coluna 'Aging_Ajustado_D+' não encontrada na base.")
+
+    def _converter_data_excel(serie: pd.Series) -> pd.Series:
+        s = serie.copy()
+        if pd.api.types.is_numeric_dtype(s):
+            return pd.to_datetime(s, unit='D', origin='1899-12-30', errors='coerce')
+        s_num = pd.to_numeric(s, errors='coerce')
+        out = pd.to_datetime(s, errors='coerce', dayfirst=True)
+        mask_num = s_num.notna() & out.isna()
+        if mask_num.any():
+            out.loc[mask_num] = pd.to_datetime(s_num.loc[mask_num], unit='D', origin='1899-12-30', errors='coerce')
+        return out
+
+    df['Data NF'] = _converter_data_excel(df['Data NF'])
+    df = df[df['Data NF'].notna()].copy()
+    df['Mes_Ano'] = df['Data NF'].dt.strftime('%m/%Y')
+    df['Mes_Label'] = df['Data NF'].dt.strftime('%b/%y').str.title()
+
+    aging = df['Aging_Ajustado_D+'].astype(str).str.extract(r'D\+(\d+)')[0]
+    df['aging_num'] = pd.to_numeric(aging, errors='coerce')
+    df = df[df['aging_num'].notna()].copy()
+    df['aging_num'] = df['aging_num'].astype(int)
+    df['flag_d0'] = df['aging_num'] == 0
+    df['flag_d1'] = df['aging_num'] == 1
+    df['flag_d2'] = df['aging_num'] == 2
+
+    return df
+
+
+def calc_metrica(df_base: pd.DataFrame) -> dict:
+    total = len(df_base)
+    if total == 0:
+        return {'D+0': 0.0, 'D+1': 0.0, 'D+2': 0.0}
+    d0 = df_base['flag_d0'].sum() / total * 100
+    d1 = (df_base['flag_d0'] | df_base['flag_d1']).sum() / total * 100
+    d2 = (df_base['flag_d0'] | df_base['flag_d1'] | df_base['flag_d2']).sum() / total * 100
+    return {'D+0': d0, 'D+1': d1, 'D+2': d2}
+
+
+def construir_visao_geral(df: pd.DataFrame) -> list:
+    meses = sorted(df['Mes_Ano'].dropna().unique(), key=lambda x: datetime.strptime(x, '%m/%Y'), reverse=True)[:12]
+    linhas = []
+    for mes in meses:
+        base = df[df['Mes_Ano'] == mes].copy()
+        metrica = calc_metrica(base)
+        # pior CD = menor SLA D+1
+        if 'CD Origem' in base.columns:
+            grp_cd = base.groupby('CD Origem').apply(lambda g: calc_metrica(g)['D+1']).sort_values()
+            pior_cd = grp_cd.index[0] if len(grp_cd) else 'Não informado'
+        else:
+            pior_cd = 'Não informado'
+        if 'Empresa' in base.columns:
+            grp_emp = base.groupby('Empresa').apply(lambda g: calc_metrica(g)['D+1']).sort_values()
+            pior_emp = grp_emp.index[0] if len(grp_emp) else 'Não informado'
+        else:
+            pior_emp = 'Não informado'
+        mes_label = datetime.strptime(mes, '%m/%Y').strftime('%b/%y').title()
+        linhas.append((mes_label, fmt_pct(metrica['D+1']), pior_cd, pior_emp))
+    return linhas
+
+
+def construir_visao_grupo(df: pd.DataFrame, coluna: str) -> dict:
+    meses = sorted(df['Mes_Ano'].dropna().unique(), key=lambda x: datetime.strptime(x, '%m/%Y'))
+    mes_atual = meses[-1] if meses else None
+    base = df[df['Mes_Ano'] == mes_atual].copy() if mes_atual else df.head(0).copy()
+
+    geral = calc_metrica(base)
+    resultado = {}
+    for chave in ['D+0', 'D+1', 'D+2']:
+        itens = []
+        if coluna in base.columns:
+            for nome, grp in base.groupby(coluna):
+                m = calc_metrica(grp)[chave]
+                itens.append((str(nome), fmt_pct(m)))
+            itens = sorted(itens, key=lambda x: float(x[1].replace('%','').replace(',','.')))
+        resultado[chave] = {'geral': fmt_pct(geral[chave]), 'itens': itens}
+    return resultado
 
 
 def render_card_titulo(titulo: str, subtitulo: str = ""):
@@ -183,7 +254,7 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str):
                 f'<span class="metric-name">{nome}</span>'
                 f'<span class="metric-pct notranslate" translate="no" style="color:{cor_por_meta(pct)};">{pct}</span>'
                 '</div>'
-                for nome, pct in value_dict["itens"]
+                for nome, pct in value_dict['itens']
             ]
         )
         meta_html = '<div class="metric-meta notranslate" translate="no">Meta atual: 94,1%</div>' if label == 'D+1' else ''
@@ -191,7 +262,7 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str):
             st.markdown(
                 '<div class="metric-box">'
                 f'<div class="metric-label notranslate" translate="no">{label}</div>'
-                f'<div class="metric-value notranslate" translate="no" style="color:{cor_por_meta(value_dict["geral"])};">{value_dict["geral"]}</div>'
+                f'<div class="metric-value notranslate" translate="no" style="color:{cor_por_meta(value_dict['geral'])};">{value_dict['geral']}</div>'
                 f'{meta_html}'
                 '<div class="metric-list">'
                 f'<div class="metric-list-title notranslate" translate="no">{lista_titulo}</div>'
@@ -202,17 +273,16 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str):
             )
 
 
-def render_visao_geral_meses():
-    meses = sf_get_visao_geral_meses()
+def render_visao_geral_meses(linhas: list):
     linhas_html = ''.join(
         [
             '<div class="month-line">'
             f'<span class="month-name notranslate" translate="no">{mes}</span>'
             f'<span class="month-pct notranslate" translate="no" style="color:{cor_por_meta(sla)};">{sla}</span>'
-            f'<span class="month-cd notranslate" translate="no">{cd}</span>'
-            f'<span class="month-empresa notranslate" translate="no">{empresa}</span>'
+            f'<span class="month-cd">{cd}</span>'
+            f'<span class="month-empresa">{empresa}</span>'
             '</div>'
-            for mes, sla, cd, empresa in meses
+            for mes, sla, cd, empresa in linhas
         ]
     )
     html = (
@@ -232,14 +302,23 @@ def render_visao_geral_meses():
     st.markdown(html, unsafe_allow_html=True)
 
 
-if "step" not in st.session_state:
+# estado
+if 'step' not in st.session_state:
     st.session_state.step = 0
-if "nome" not in st.session_state:
-    st.session_state.nome = ""
-if "indicador" not in st.session_state:
+if 'nome' not in st.session_state:
+    st.session_state.nome = ''
+if 'indicador' not in st.session_state:
     st.session_state.indicador = None
-if "sf_visao" not in st.session_state:
+if 'sf_visao' not in st.session_state:
     st.session_state.sf_visao = None
+
+# dados reais
+base_real = None
+erro_base = None
+try:
+    base_real = carregar_base_real(ARQUIVO_BASE)
+except Exception as e:
+    erro_base = str(e)
 
 html_topbar = (
     '<div class="topbar">'
@@ -252,11 +331,16 @@ html_topbar = (
 )
 st.markdown(html_topbar, unsafe_allow_html=True)
 
+if erro_base:
+    st.warning(f"Base real não carregada: {erro_base}")
+else:
+    st.caption(f"Base real carregada: {ARQUIVO_BASE}")
+
 if st.session_state.step == 0:
-    st.info("Para iniciar, informe o seu nome.")
-    nome = st.text_input("Nome")
-    if st.button("Continuar", use_container_width=True):
-        st.session_state.nome = nome.strip() if nome else "Usuário"
+    st.info('Para iniciar, informe o seu nome.')
+    nome = st.text_input('Nome')
+    if st.button('Continuar', use_container_width=True):
+        st.session_state.nome = nome.strip() if nome else 'Usuário'
         st.session_state.step = 1
         st.rerun()
 
@@ -264,56 +348,52 @@ elif st.session_state.step == 1:
     st.success(f"Prazer, {st.session_state.nome}!")
     st.markdown('<div class="menu-info"><strong>Opções disponíveis:</strong><br>Separação e Faturamento | Pedidos para LPs | Resultado do DRE | Valores dos EAs</div>', unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
-    if c1.button("Separação e Faturamento", use_container_width=True):
-        st.session_state.indicador = "sf"
+    if c1.button('Separação e Faturamento', use_container_width=True):
+        st.session_state.indicador = 'sf'
         st.session_state.sf_visao = None
         st.session_state.step = 2
         st.rerun()
-    if c2.button("Pedidos para LPs", use_container_width=True):
-        st.warning("No momento o fluxo de Pedidos para LPs está em construção.")
-    if c3.button("Resultado do DRE", use_container_width=True):
-        st.warning("No momento o fluxo de Resultado do DRE está em construção.")
-    if c4.button("Valores dos EAs", use_container_width=True):
-        st.warning("No momento o fluxo de Valores dos EAs está em construção.")
+    if c2.button('Pedidos para LPs', use_container_width=True):
+        st.warning('No momento o fluxo de Pedidos para LPs está em construção.')
+    if c3.button('Resultado do DRE', use_container_width=True):
+        st.warning('No momento o fluxo de Resultado do DRE está em construção.')
+    if c4.button('Valores dos EAs', use_container_width=True):
+        st.warning('No momento o fluxo de Valores dos EAs está em construção.')
 
-elif st.session_state.step == 2 and st.session_state.indicador == "sf":
+elif st.session_state.step == 2 and st.session_state.indicador == 'sf':
     st.markdown('<div class="menu-info"><strong>Opções disponíveis:</strong><br>Visão Geral | Visão por CDs | Visão por Empresas</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
+    if c1.button('Visão Geral', use_container_width=True):
+        st.session_state.sf_visao = 'geral'
+        st.rerun()
+    if c2.button('Visão por CDs', use_container_width=True):
+        st.session_state.sf_visao = 'cds'
+        st.rerun()
+    if c3.button('Visão por Empresas', use_container_width=True):
+        st.session_state.sf_visao = 'empresas'
+        st.rerun()
 
-    if c1.button("Visão Geral", use_container_width=True):
-        st.session_state.sf_visao = "geral"
-        st.rerun()
-    if c2.button("Visão por CDs", use_container_width=True):
-        st.session_state.sf_visao = "cds"
-        st.rerun()
-    if c3.button("Visão por Empresas", use_container_width=True):
-        st.session_state.sf_visao = "empresas"
-        st.rerun()
-
-    if st.session_state.sf_visao == "geral":
-        render_visao_geral_meses()
-    elif st.session_state.sf_visao == "cds":
-        render_card_titulo(
-            "Separação e Faturamento | Visão por CDs | SLA do mês atual",
-            "Dados de exemplo / placeholders. Depois basta conectar à lógica real do seu indicador.",
-        )
-        render_metricas_sla(sf_get_sla_cds(), "CDs")
-    elif st.session_state.sf_visao == "empresas":
-        render_card_titulo(
-            "Separação e Faturamento | Visão por Empresas | SLA do mês atual",
-            "Dados de exemplo / placeholders. Depois basta conectar à lógica real do seu indicador.",
-        )
-        render_metricas_sla(sf_get_sla_empresas(), "Empresas")
+    if base_real is not None:
+        if st.session_state.sf_visao == 'geral':
+            render_visao_geral_meses(construir_visao_geral(base_real))
+        elif st.session_state.sf_visao == 'cds':
+            render_card_titulo('Separação e Faturamento | Visão por CDs | SLA do mês atual', 'Dados reais da base Faturamento SLA 2026.xlsb.')
+            render_metricas_sla(construir_visao_grupo(base_real, 'CD Origem'), 'CDs')
+        elif st.session_state.sf_visao == 'empresas':
+            render_card_titulo('Separação e Faturamento | Visão por Empresas | SLA do mês atual', 'Dados reais da base Faturamento SLA 2026.xlsb.')
+            render_metricas_sla(construir_visao_grupo(base_real, 'Empresa'), 'Empresas')
+    else:
+        st.error('Não foi possível carregar a base real. Verifique se o arquivo .xlsb está na raiz do repositório e se o requirements contém pyxlsb.')
 
     c1, c2 = st.columns(2)
-    if c1.button("Voltar aos indicadores", use_container_width=True):
+    if c1.button('Voltar aos indicadores', use_container_width=True):
         st.session_state.step = 1
         st.session_state.indicador = None
         st.session_state.sf_visao = None
         st.rerun()
-    if c2.button("Reiniciar conversa", use_container_width=True):
+    if c2.button('Reiniciar conversa', use_container_width=True):
         st.session_state.step = 0
-        st.session_state.nome = ""
+        st.session_state.nome = ''
         st.session_state.indicador = None
         st.session_state.sf_visao = None
         st.rerun()
