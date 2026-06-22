@@ -2,13 +2,13 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-from pathlib import Path
 from datetime import datetime
 
 st.set_page_config(page_title="Portal Torre Logística", layout="centered")
 
 META_ATUAL = 94.1
 ARQUIVO_BASE = "Faturamento SLA 2026.xlsb"
+COR_NEUTRA = "#1f2937"
 
 st.markdown(
     """
@@ -127,7 +127,7 @@ def cor_por_meta(valor_pct: str) -> str:
 
 
 def fmt_pct(valor: float) -> str:
-    return f"{valor:.1f}%".replace('.', ',')
+    return f"{valor:.2f}%".replace('.', ',')
 
 
 def normalizar_categoria(s: pd.Series, valor_padrao='Não informado') -> pd.Series:
@@ -172,7 +172,6 @@ def carregar_base_real(path: str) -> pd.DataFrame:
     df['Data NF'] = _converter_data_excel(df['Data NF'])
     df = df[df['Data NF'].notna()].copy()
     df['Mes_Ano'] = df['Data NF'].dt.strftime('%m/%Y')
-    df['Mes_Label'] = df['Data NF'].dt.strftime('%b/%y').str.title()
 
     aging = df['Aging_Ajustado_D+'].astype(str).str.extract(r'D\+(\d+)')[0]
     df['aging_num'] = pd.to_numeric(aging, errors='coerce')
@@ -201,7 +200,6 @@ def construir_visao_geral(df: pd.DataFrame) -> list:
     for mes in meses:
         base = df[df['Mes_Ano'] == mes].copy()
         metrica = calc_metrica(base)
-        # pior CD = menor SLA D+1
         if 'CD Origem' in base.columns:
             grp_cd = base.groupby('CD Origem').apply(lambda g: calc_metrica(g)['D+1']).sort_values()
             pior_cd = grp_cd.index[0] if len(grp_cd) else 'Não informado'
@@ -230,7 +228,7 @@ def construir_visao_grupo(df: pd.DataFrame, coluna: str) -> dict:
             for nome, grp in base.groupby(coluna):
                 m = calc_metrica(grp)[chave]
                 itens.append((str(nome), fmt_pct(m)))
-            itens = sorted(itens, key=lambda x: float(x[1].replace('%','').replace(',','.')))
+            itens = sorted(itens, key=lambda x: float(x[1].replace('%', '').replace(',', '.')))
         resultado[chave] = {'geral': fmt_pct(geral[chave]), 'itens': itens}
     return resultado
 
@@ -245,6 +243,10 @@ def render_card_titulo(titulo: str, subtitulo: str = ""):
     )
 
 
+def cor_percentual_card(label: str, pct: str) -> str:
+    return cor_por_meta(pct) if label == 'D+1' else COR_NEUTRA
+
+
 def render_metricas_sla(sla_dict: dict, lista_titulo: str):
     c1, c2, c3 = st.columns(3)
     for col, (label, value_dict) in zip([c1, c2, c3], sla_dict.items()):
@@ -252,7 +254,7 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str):
             [
                 '<div class="metric-line">'
                 f'<span class="metric-name">{nome}</span>'
-                f'<span class="metric-pct notranslate" translate="no" style="color:{cor_por_meta(pct)};">{pct}</span>'
+                f'<span class="metric-pct notranslate" translate="no" style="color:{cor_percentual_card(label, pct)};">{pct}</span>'
                 '</div>'
                 for nome, pct in value_dict['itens']
             ]
@@ -262,7 +264,7 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str):
             st.markdown(
                 '<div class="metric-box">'
                 f'<div class="metric-label notranslate" translate="no">{label}</div>'
-                f'<div class="metric-value notranslate" translate="no" style="color:{cor_por_meta(value_dict['geral'])};">{value_dict['geral']}</div>'
+                f'<div class="metric-value notranslate" translate="no" style="color:{cor_percentual_card(label, value_dict['geral'])};">{value_dict['geral']}</div>'
                 f'{meta_html}'
                 '<div class="metric-list">'
                 f'<div class="metric-list-title notranslate" translate="no">{lista_titulo}</div>'
@@ -302,7 +304,6 @@ def render_visao_geral_meses(linhas: list):
     st.markdown(html, unsafe_allow_html=True)
 
 
-# estado
 if 'step' not in st.session_state:
     st.session_state.step = 0
 if 'nome' not in st.session_state:
@@ -312,7 +313,6 @@ if 'indicador' not in st.session_state:
 if 'sf_visao' not in st.session_state:
     st.session_state.sf_visao = None
 
-# dados reais
 base_real = None
 erro_base = None
 try:
