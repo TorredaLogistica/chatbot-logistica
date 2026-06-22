@@ -12,7 +12,6 @@ MESES_BR = {
     '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez'
 }
 
-# Metas do dashboard_bi.py
 METAS_CLARO_BRASIL = {
     "01/2025": 76.09, "02/2025": 74.38, "03/2025": 79.52, "04/2025": 72.28,
     "05/2025": 81.73, "06/2025": 88.07, "07/2025": 82.91, "08/2025": 89.19,
@@ -69,11 +68,11 @@ st.markdown(
     .metric-name { font-weight: 600; color: #1f2937; }
     .metric-pct { font-weight: 700; }
 
-    /* Ajuste fino da Visão Empresas D+1: SLA e Meta alinhados à direita */
+    /* EMPRESAS D+1 sem quebra */
     .metric-line-empresa-head,
     .metric-line-empresa {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 96px 96px;
+        grid-template-columns: minmax(150px, 1fr) 88px 88px;
         gap: 8px;
         align-items: center;
         font-size: 12px;
@@ -85,13 +84,26 @@ st.markdown(
         padding-bottom: 4px;
         margin-bottom: 4px;
     }
+    .metric-name-empresa,
+    .metric-name-empresa-head {
+        text-align: left;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+        font-weight: 600;
+        color: #1f2937;
+    }
+    .metric-name-empresa-head { font-weight: 800; }
     .metric-col-sla, .metric-col-meta,
     .metric-col-sla-head, .metric-col-meta-head {
         display: flex;
         align-items: center;
         justify-content: flex-end;
         text-align: right;
+        white-space: nowrap;
         width: 100%;
+        font-weight: 700;
     }
 
     .month-list-box {
@@ -151,7 +163,7 @@ st.markdown(
         .month-line { font-size: 12px; gap: 6px; }
         .month-cd, .month-pct-cd, .month-header .col-cd, .month-header .col-pct-cd { padding: 4px 6px; }
         .metric-line-empresa-head,
-        .metric-line-empresa { grid-template-columns: minmax(0, 1fr) 76px 76px; gap: 6px; }
+        .metric-line-empresa { grid-template-columns: minmax(110px, 1fr) 72px 72px; gap: 6px; }
     }
 
     div.stButton > button {
@@ -312,7 +324,7 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str, coluna: str):
         if coluna == 'Empresa' and label == 'D+1':
             linhas_html += (
                 '<div class="metric-line-empresa-head">'
-                '<span class="metric-name">Empresa</span>'
+                '<span class="metric-name-empresa-head">Empresa</span>'
                 '<span class="metric-col-sla-head">SLA</span>'
                 '<span class="metric-col-meta-head">Meta</span>'
                 '</div>'
@@ -323,7 +335,7 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str, coluna: str):
                 cor = cor_percentual_card(label, pct, meta_ref)
                 linhas_html += (
                     '<div class="metric-line-empresa">'
-                    f'<span class="metric-name">{nome}</span>'
+                    f'<span class="metric-name-empresa">{nome}</span>'
                     f'<span class="metric-col-sla metric-pct" style="color:{cor};">{pct}</span>'
                     f'<span class="metric-col-meta metric-pct">{meta_txt}</span>'
                     '</div>'
