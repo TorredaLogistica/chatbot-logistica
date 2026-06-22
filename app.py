@@ -9,6 +9,10 @@ st.set_page_config(page_title="Portal Torre Logística", layout="centered")
 META_ATUAL = 94.1
 ARQUIVO_BASE = "Faturamento SLA 2026.xlsb"
 COR_NEUTRA = "#1f2937"
+MESES_BR = {
+    '01': 'Jan', '02': 'Fev', '03': 'Mar', '04': 'Abr', '05': 'Mai', '06': 'Jun',
+    '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez'
+}
 
 st.markdown(
     """
@@ -84,7 +88,7 @@ st.markdown(
         text-transform: uppercase; letter-spacing: 0.02em; padding-bottom: 8px; border-bottom: 1px solid #e6e6e6;
         align-items: center;
     }
-    .month-header .col-cd, .month-header .col-empresa {
+    .month-header .col-cd, .month-header .col-pct-cd {
         text-align: center; color: #075E54; font-weight: 800;
         background: rgba(7, 94, 84, 0.06); border-radius: 8px; padding: 4px 8px;
     }
@@ -96,7 +100,7 @@ st.markdown(
     .month-line:last-child { border-bottom: none; }
     .month-name { font-weight: 600; color: #1f2937; }
     .month-pct { font-weight: 700; }
-    .month-cd, .month-empresa {
+    .month-cd, .month-pct-cd {
         font-weight: 700; color: #1f2937; text-align: center;
         background: rgba(7, 94, 84, 0.06); border-radius: 8px; padding: 4px 8px;
     }
@@ -108,7 +112,7 @@ st.markdown(
         .card-title, .month-list-title { font-size: 16px; }
         .month-header-offensores, .month-header { font-size: 10px; gap: 6px; }
         .month-line { font-size: 12px; gap: 6px; }
-        .month-cd, .month-empresa, .month-header .col-cd, .month-header .col-empresa { padding: 4px 6px; }
+        .month-cd, .month-pct-cd, .month-header .col-cd, .month-header .col-pct-cd { padding: 4px 6px; }
     }
     div.stButton > button {
         border-radius: 10px !important; border: 1px solid #d0d7de !important; min-height: 42px !important;
@@ -119,6 +123,11 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+
+def mes_br(mm_yyyy: str) -> str:
+    mm, yyyy = mm_yyyy.split('/')
+    return f"{MESES_BR.get(mm, mm)}/{yyyy[-2:]}"
 
 
 def cor_por_meta(valor_pct: str) -> str:
@@ -133,7 +142,7 @@ def fmt_pct(valor: float) -> str:
 def normalizar_categoria(s: pd.Series, valor_padrao='Não informado') -> pd.Series:
     s = (s.fillna(valor_padrao)
            .astype(str)
-           .str.replace('\u00A0', '', regex=False)
+           .str.replace(' ', '', regex=False)
            .str.strip())
     return s.replace({'': valor_padrao, 'nan': valor_padrao, 'NaN': valor_padrao, 'None': valor_padrao, '<NA>': valor_padrao, 'undefined': valor_padrao})
 
@@ -142,17 +151,13 @@ def normalizar_categoria(s: pd.Series, valor_padrao='Não informado') -> pd.Seri
 def carregar_base_real(path: str) -> pd.DataFrame:
     if not os.path.exists(path):
         raise FileNotFoundError(f"Arquivo {path} não encontrado na raiz do repositório.")
-
     df = pd.read_excel(path, engine='pyxlsb')
     df.columns = df.columns.str.strip()
-
     if 'Pedido' not in df.columns and 'Pedidos' in df.columns:
         df['Pedido'] = df['Pedidos']
-
     for col in ['CD Origem', 'Empresa', 'Canal de Atuacao', 'Canal', 'Operador', 'Unidade de Negocio']:
         if col in df.columns:
             df[col] = normalizar_categoria(df[col])
-
     if 'Data NF' not in df.columns:
         raise KeyError("Coluna 'Data NF' não encontrada na base.")
     if 'Aging_Ajustado_D+' not in df.columns:
@@ -172,7 +177,6 @@ def carregar_base_real(path: str) -> pd.DataFrame:
     df['Data NF'] = _converter_data_excel(df['Data NF'])
     df = df[df['Data NF'].notna()].copy()
     df['Mes_Ano'] = df['Data NF'].dt.strftime('%m/%Y')
-
     aging = df['Aging_Ajustado_D+'].astype(str).str.extract(r'D\+(\d+)')[0]
     df['aging_num'] = pd.to_numeric(aging, errors='coerce')
     df = df[df['aging_num'].notna()].copy()
@@ -180,7 +184,6 @@ def carregar_base_real(path: str) -> pd.DataFrame:
     df['flag_d0'] = df['aging_num'] == 0
     df['flag_d1'] = df['aging_num'] == 1
     df['flag_d2'] = df['aging_num'] == 2
-
     return df
 
 
@@ -203,15 +206,12 @@ def construir_visao_geral(df: pd.DataFrame) -> list:
         if 'CD Origem' in base.columns:
             grp_cd = base.groupby('CD Origem').apply(lambda g: calc_metrica(g)['D+1']).sort_values()
             pior_cd = grp_cd.index[0] if len(grp_cd) else 'Não informado'
+            pior_cd_pct = fmt_pct(float(grp_cd.iloc[0])) if len(grp_cd) else '0,00%'
         else:
             pior_cd = 'Não informado'
-        if 'Empresa' in base.columns:
-            grp_emp = base.groupby('Empresa').apply(lambda g: calc_metrica(g)['D+1']).sort_values()
-            pior_emp = grp_emp.index[0] if len(grp_emp) else 'Não informado'
-        else:
-            pior_emp = 'Não informado'
-        mes_label = datetime.strptime(mes, '%m/%Y').strftime('%b/%y').title()
-        linhas.append((mes_label, fmt_pct(metrica['D+1']), pior_cd, pior_emp))
+            pior_cd_pct = '0,00%'
+        mes_label = mes_br(mes)
+        linhas.append((mes_label, fmt_pct(metrica['D+1']), pior_cd, pior_cd_pct))
     return linhas
 
 
@@ -219,7 +219,6 @@ def construir_visao_grupo(df: pd.DataFrame, coluna: str) -> dict:
     meses = sorted(df['Mes_Ano'].dropna().unique(), key=lambda x: datetime.strptime(x, '%m/%Y'))
     mes_atual = meses[-1] if meses else None
     base = df[df['Mes_Ano'] == mes_atual].copy() if mes_atual else df.head(0).copy()
-
     geral = calc_metrica(base)
     resultado = {}
     for chave in ['D+0', 'D+1', 'D+2']:
@@ -260,11 +259,12 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str):
             ]
         )
         meta_html = '<div class="metric-meta notranslate" translate="no">Meta atual: 94,1%</div>' if label == 'D+1' else ''
+        geral_cor = cor_percentual_card(label, value_dict['geral'])
         with col:
             st.markdown(
                 '<div class="metric-box">'
                 f'<div class="metric-label notranslate" translate="no">{label}</div>'
-                f'<div class="metric-value notranslate" translate="no" style="color:{cor_percentual_card(label, value_dict['geral'])};">{value_dict['geral']}</div>'
+                f'<div class="metric-value notranslate" translate="no" style="color:{geral_cor};">{value_dict["geral"]}</div>'
                 f'{meta_html}'
                 '<div class="metric-list">'
                 f'<div class="metric-list-title notranslate" translate="no">{lista_titulo}</div>'
@@ -282,9 +282,9 @@ def render_visao_geral_meses(linhas: list):
             f'<span class="month-name notranslate" translate="no">{mes}</span>'
             f'<span class="month-pct notranslate" translate="no" style="color:{cor_por_meta(sla)};">{sla}</span>'
             f'<span class="month-cd">{cd}</span>'
-            f'<span class="month-empresa">{empresa}</span>'
+            f'<span class="month-pct-cd notranslate" translate="no">{pct_cd}</span>'
             '</div>'
-            for mes, sla, cd, empresa in linhas
+            for mes, sla, cd, pct_cd in linhas
         ]
     )
     html = (
@@ -294,7 +294,7 @@ def render_visao_geral_meses(linhas: list):
         '<div class="month-highlight notranslate" translate="no">Claro Brasil</div>'
         '<div class="month-table-card">'
         '<div class="month-header-offensores"><span></span><span></span><span class="off-label notranslate" translate="no">OFENSORES</span></div>'
-        '<div class="month-header"><span class="notranslate" translate="no">Mês</span><span class="notranslate" translate="no">SLA</span><span class="col-cd notranslate" translate="no">CD</span><span class="col-empresa notranslate" translate="no">Empresa</span></div>'
+        '<div class="month-header"><span class="notranslate" translate="no">Mês</span><span class="notranslate" translate="no">SLA</span><span class="col-cd notranslate" translate="no">CD</span><span class="col-pct-cd notranslate" translate="no">% CD Ofensor</span></div>'
         '<div class="month-list">'
         f'{linhas_html}'
         '</div>'
