@@ -57,11 +57,15 @@ st.markdown(
     .metric-box {
         background: #f7f7f7; border: 1px solid #e3e3e3; border-radius: 12px; padding: 12px;
         text-align: center; min-height: 290px; display: flex; flex-direction: column; justify-content: flex-start;
+        overflow: hidden;
     }
     .metric-label { font-size: 12px; color: #667781; margin-bottom: 4px; }
     .metric-value { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
     .metric-meta { font-size: 12px; font-weight: 700; color: #667781; margin-bottom: 8px; }
-    .metric-list { margin-top: 10px; padding-top: 8px; border-top: 1px solid #e6e6e6; text-align: left; }
+    .metric-list {
+        margin-top: 10px; padding-top: 8px; border-top: 1px solid #e6e6e6; text-align: left;
+        width: 100%; overflow: hidden;
+    }
     .metric-list-title {
         font-size: 11px; color: #667781; font-weight: 700; margin-bottom: 6px;
         text-transform: uppercase; letter-spacing: 0.02em;
@@ -73,15 +77,19 @@ st.markdown(
     .metric-name { font-weight: 600; color: #1f2937; }
     .metric-pct { font-weight: 700; }
 
-    /* D+1 Empresas alinhado, mantendo padrão visual dos demais cards */
+    /* D+1 Empresas: tudo dentro do card */
     .empresa-head,
     .empresa-row {
         display: grid;
-        grid-template-columns: minmax(96px, 1fr) 72px 72px;
-        column-gap: 6px;
+        grid-template-columns: minmax(80px, 1fr) 64px 64px;
+        column-gap: 4px;
         align-items: center;
         font-size: 12px;
         line-height: 1.45;
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+        box-sizing: border-box;
     }
     .empresa-head {
         padding: 2px 0 4px 0;
@@ -95,9 +103,9 @@ st.markdown(
     }
     .empresa-head .col-sla,
     .empresa-head .col-meta {
-        width: 72px;
-        justify-self: end;
+        width: 64px;
         text-align: right;
+        justify-self: end;
         font-weight: 700;
         color: #1f2937;
         white-space: nowrap;
@@ -116,9 +124,9 @@ st.markdown(
     }
     .empresa-row .col-sla,
     .empresa-row .col-meta {
-        width: 72px;
-        justify-self: end;
+        width: 64px;
         text-align: right;
+        justify-self: end;
         font-weight: 700;
         white-space: nowrap;
     }
@@ -179,9 +187,9 @@ st.markdown(
         .month-header-offensores, .month-header { font-size: 10px; gap: 6px; }
         .month-line { font-size: 12px; gap: 6px; }
         .month-cd, .month-pct-cd, .month-header .col-cd, .month-header .col-pct-cd { padding: 4px 6px; }
-        .empresa-head, .empresa-row { grid-template-columns: minmax(88px, 1fr) 60px 60px; column-gap: 4px; }
+        .empresa-head, .empresa-row { grid-template-columns: minmax(76px, 1fr) 56px 56px; column-gap: 2px; }
         .empresa-head .col-sla, .empresa-head .col-meta,
-        .empresa-row .col-sla, .empresa-row .col-meta { width: 60px; }
+        .empresa-row .col-sla, .empresa-row .col-meta { width: 56px; }
     }
 
     div.stButton > button {
