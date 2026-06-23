@@ -275,6 +275,26 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str, coluna: str):
         mes_atual = value_dict.get('mes_atual')
         linhas_html = ''
         if coluna == 'Empresa' and label == 'D+1':
+    linhas_html = (
+        '<div class="empresa-head">'
+        '<span class="col-emp"></span>'
+        '<span class="col-sla">SLA</span>'
+        '<span class="col-meta">Meta</span>'
+        '</div>'
+    )
+
+    for nome, pct, meta_item in value_dict['itens']:
+        meta_ref = meta_item if meta_item is not None else meta_atual
+        meta_txt = fmt_pct(meta_ref)
+        cor = cor_percentual_card(label, pct, meta_ref)
+
+        linhas_html += (
+            '<div class="empresa-row">'
+            f'<span class="col-emp">{nome}</span>'
+            f'<span class="col-sla" style="color:{cor};">{pct}</span>'
+            f'<span class="col-meta">{meta_txt}</span>'
+            '</div>'
+        )
             linhas_html += '<div class="metric-line" style="font-weight:800;border-bottom:1px solid #e6e6e6;padding-bottom:4px;margin-bottom:4px;"><span class="metric-pct"></span><span class="metric-pct">SLA</span><span class="metric-pct">Meta</span></div>'
             for nome, pct, meta_item in value_dict['itens']:
                 meta_txt = fmt_pct(meta_item if meta_item is not None else meta_atual)
