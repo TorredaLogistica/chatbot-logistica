@@ -274,7 +274,7 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str, coluna: str):
         meta_atual = value_dict.get('meta_atual', 85.0)
         mes_atual = value_dict.get('mes_atual')
         linhas_html = ''
-        if coluna == '' and label == 'D+1':
+        if coluna == 'Empresas' and label == 'D+1':
             linhas_html += '<div class="metric-line" style="font-weight:800;border-bottom:1px solid #e6e6e6;padding-bottom:4px;margin-bottom:4px;"><span class="metric-name"></span>Empresa<span class="metric-pct">SLA</span><span class="metric-pct">Meta</span></div>'
             for nome, pct, meta_item in value_dict['itens']:
                 meta_txt = fmt_pct(meta_item if meta_item is not None else meta_atual)
