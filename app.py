@@ -12,7 +12,6 @@ MESES_BR = {
     '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez'
 }
 
-# Metas do dashboard_bi.py
 METAS_CLARO_BRASIL = {
     "01/2025": 76.09, "02/2025": 74.38, "03/2025": 79.52, "04/2025": 72.28,
     "05/2025": 81.73, "06/2025": 88.07, "07/2025": 82.91, "08/2025": 89.19,
@@ -78,22 +77,21 @@ st.markdown(
     .metric-name { font-weight: 600; color: #1f2937; }
     .metric-pct { font-weight: 700; }
 
-    /* Notebook/Desktop: mantém Meta dentro do card */
-empresa-head,
-.empresa-row {
-    display: grid;
-    grid-template-columns: minmax(96px, 1fr) 52px 52px;
-    column-gap: 6px;
-    align-items: center;
-    font-size: 12px;
-    line-height: 1.45;
-    width: calc(100% - 30px);
-    max-width: calc(100% - 30px);
-    padding-right: 30px;
-    box-sizing: border-box;
-    overflow: hidden;
-}
-
+    /* Notebook: puxa SLA/META um pouco para dentro do card */
+    .empresa-head,
+    .empresa-row {
+        display: grid;
+        grid-template-columns: minmax(96px, 1fr) 60px 60px;
+        column-gap: 4px;
+        align-items: center;
+        font-size: 12px;
+        line-height: 1.45;
+        width: calc(100% - 8px);
+        max-width: calc(100% - 8px);
+        padding-right: 8px;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
     .empresa-head {
         padding-top: 2px;
         padding-bottom: 4px;
@@ -107,9 +105,7 @@ empresa-head,
     }
     .empresa-head .col-sla,
     .empresa-head .col-meta {
-        width: 54px;
-        min-width: 54px;
-        max-width: 54px;
+        width: 60px;
         text-align: right;
         justify-self: end;
         font-weight: 700;
@@ -130,9 +126,7 @@ empresa-head,
     }
     .empresa-row .col-sla,
     .empresa-row .col-meta {
-        width: 54px;
-        min-width: 54px;
-        max-width: 54px;
+        width: 60px;
         text-align: right;
         justify-self: end;
         font-weight: 700;
@@ -187,7 +181,6 @@ empresa-head,
     }
     .notranslate { white-space: nowrap; }
 
-    /* Mobile: não mexer, já está ok */
     @media (max-width: 768px) {
         .main .block-container { max-width: 100% !important; padding-left: 0.7rem; padding-right: 0.7rem; }
         .topbar { padding: 12px 14px; }
@@ -204,7 +197,7 @@ empresa-head,
             padding-right: 0;
         }
         .empresa-head .col-sla, .empresa-head .col-meta,
-        .empresa-row .col-sla, .empresa-row .col-meta { width: 60px; min-width: 60px; max-width: 60px; }
+        .empresa-row .col-sla, .empresa-row .col-meta { width: 60px; }
     }
 
     div.stButton > button {
@@ -528,3 +521,4 @@ elif st.session_state.step == 2 and st.session_state.indicador == 'sf':
         st.session_state.indicador = None
         st.session_state.sf_visao = None
         st.rerun()
+
