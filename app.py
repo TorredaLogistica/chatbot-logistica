@@ -79,20 +79,19 @@ st.markdown(
     .metric-pct { font-weight: 700; }
 
     /* Notebook/Desktop: mantém Meta dentro do card */
-    .empresa-head,
-    .empresa-row {
-        display: grid;
-        grid-template-columns: minmax(92px, 1fr) 54px 54px;
-        column-gap: 2px;
-        align-items: center;
-        font-size: 12px;
-        line-height: 1.45;
-        width: calc(100% - 18px);
-        max-width: calc(100% - 18px);
-        padding-right: 18px;
-        box-sizing: border-box;
-        overflow: hidden;
-    }
+    
+display: grid;
+    grid-template-columns: minmax(100px, 1fr) 40px 40px;
+    column-gap: 3px;
+    align-items: center;
+    font-size: 12px;
+    line-height: 1.45;
+    width: calc(100% - 18px);
+    max-width: calc(100% - 18px);
+    padding-right: 18px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
     .empresa-head {
         padding-top: 2px;
         padding-bottom: 4px;
