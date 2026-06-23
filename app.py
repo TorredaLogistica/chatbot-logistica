@@ -12,6 +12,7 @@ MESES_BR = {
     '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez'
 }
 
+# Metas do dashboard_bi.py
 METAS_CLARO_BRASIL = {
     "01/2025": 76.09, "02/2025": 74.38, "03/2025": 79.52, "04/2025": 72.28,
     "05/2025": 81.73, "06/2025": 88.07, "07/2025": 82.91, "08/2025": 89.19,
@@ -77,11 +78,11 @@ st.markdown(
     .metric-name { font-weight: 600; color: #1f2937; }
     .metric-pct { font-weight: 700; }
 
-    /* Notebook: puxa SLA/META um pouco para dentro do card */
+    /* Notebook/Desktop: mantém Meta dentro do card */
     .empresa-head,
     .empresa-row {
         display: grid;
-        grid-template-columns: minmax(100px, 1fr) 54px 54px;
+        grid-template-columns: minmax(92px, 1fr) 54px 54px;
         column-gap: 2px;
         align-items: center;
         font-size: 12px;
@@ -106,6 +107,8 @@ st.markdown(
     .empresa-head .col-sla,
     .empresa-head .col-meta {
         width: 54px;
+        min-width: 54px;
+        max-width: 54px;
         text-align: right;
         justify-self: end;
         font-weight: 700;
@@ -126,7 +129,9 @@ st.markdown(
     }
     .empresa-row .col-sla,
     .empresa-row .col-meta {
-        width: 60px;
+        width: 54px;
+        min-width: 54px;
+        max-width: 54px;
         text-align: right;
         justify-self: end;
         font-weight: 700;
@@ -181,6 +186,7 @@ st.markdown(
     }
     .notranslate { white-space: nowrap; }
 
+    /* Mobile: não mexer, já está ok */
     @media (max-width: 768px) {
         .main .block-container { max-width: 100% !important; padding-left: 0.7rem; padding-right: 0.7rem; }
         .topbar { padding: 12px 14px; }
@@ -197,7 +203,7 @@ st.markdown(
             padding-right: 0;
         }
         .empresa-head .col-sla, .empresa-head .col-meta,
-        .empresa-row .col-sla, .empresa-row .col-meta { width: 60px; }
+        .empresa-row .col-sla, .empresa-row .col-meta { width: 60px; min-width: 60px; max-width: 60px; }
     }
 
     div.stButton > button {
