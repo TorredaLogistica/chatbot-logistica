@@ -81,8 +81,8 @@ st.markdown(
     .empresa-head,
     .empresa-row {
         display: grid;
-        grid-template-columns: minmax(100px, 1fr) 40px 40px;
-        column-gap: 3px;
+        grid-template-columns: minmax(100px, 1fr) 54px 54px;
+        column-gap: 2px;
         align-items: center;
         font-size: 12px;
         line-height: 1.45;
@@ -105,7 +105,7 @@ st.markdown(
     }
     .empresa-head .col-sla,
     .empresa-head .col-meta {
-        width: 60px;
+        width: 54px;
         text-align: right;
         justify-self: end;
         font-weight: 700;
