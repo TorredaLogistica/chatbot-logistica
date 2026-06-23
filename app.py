@@ -82,7 +82,7 @@ st.markdown(
     .empresa-row {
         display: grid;
         grid-template-columns: minmax(96px, 1fr) 40px 40px;
-        column-gap: 4px;
+        column-gap: 2px;
         align-items: center;
         font-size: 12px;
         line-height: 1.45;
