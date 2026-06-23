@@ -77,22 +77,24 @@ st.markdown(
     .metric-name { font-weight: 600; color: #1f2937; }
     .metric-pct { font-weight: 700; }
 
-    /* D+1 Empresas: tudo dentro do card */
+    /* Notebook: puxa SLA/META um pouco para dentro do card */
     .empresa-head,
     .empresa-row {
         display: grid;
-        grid-template-columns: minmax(80px, 1fr) 64px 64px;
+        grid-template-columns: minmax(96px, 1fr) 60px 60px;
         column-gap: 4px;
         align-items: center;
         font-size: 12px;
         line-height: 1.45;
-        width: 100%;
-        max-width: 100%;
-        overflow: hidden;
+        width: calc(100% - 8px);
+        max-width: calc(100% - 8px);
+        padding-right: 8px;
         box-sizing: border-box;
+        overflow: hidden;
     }
     .empresa-head {
-        padding: 2px 0 4px 0;
+        padding-top: 2px;
+        padding-bottom: 4px;
         margin-bottom: 4px;
     }
     .empresa-head .col-emp {
@@ -103,7 +105,7 @@ st.markdown(
     }
     .empresa-head .col-sla,
     .empresa-head .col-meta {
-        width: 64px;
+        width: 60px;
         text-align: right;
         justify-self: end;
         font-weight: 700;
@@ -124,7 +126,7 @@ st.markdown(
     }
     .empresa-row .col-sla,
     .empresa-row .col-meta {
-        width: 64px;
+        width: 60px;
         text-align: right;
         justify-self: end;
         font-weight: 700;
@@ -187,9 +189,15 @@ st.markdown(
         .month-header-offensores, .month-header { font-size: 10px; gap: 6px; }
         .month-line { font-size: 12px; gap: 6px; }
         .month-cd, .month-pct-cd, .month-header .col-cd, .month-header .col-pct-cd { padding: 4px 6px; }
-        .empresa-head, .empresa-row { grid-template-columns: minmax(76px, 1fr) 56px 56px; column-gap: 2px; }
+        .empresa-head, .empresa-row {
+            grid-template-columns: minmax(88px, 1fr) 60px 60px;
+            column-gap: 4px;
+            width: 100%;
+            max-width: 100%;
+            padding-right: 0;
+        }
         .empresa-head .col-sla, .empresa-head .col-meta,
-        .empresa-row .col-sla, .empresa-row .col-meta { width: 56px; }
+        .empresa-row .col-sla, .empresa-row .col-meta { width: 60px; }
     }
 
     div.stButton > button {
