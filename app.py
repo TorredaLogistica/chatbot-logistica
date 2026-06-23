@@ -418,7 +418,7 @@ elif st.session_state.step == 2 and st.session_state.indicador == 'sf':
             render_metricas_sla(construir_visao_grupo(base_real, 'CD Origem'), 'CDs', 'CD Origem')
         elif st.session_state.sf_visao == 'empresas':
             render_card_titulo('Separação e Faturamento | Visão por Empresas | SLA do mês atual', 'Dados reais da base Faturamento SLA 2026.xlsb.')
-            render_metricas_sla(construir_visao_grupo(base_real, 'EMPRESA'), 'Empresas', 'eee')
+            render_metricas_sla(construir_visao_grupo(base_real, 'EMPRESA'), 'Empresas', 'EMPRESA')
     else:
         st.error('Não foi possível carregar a base real. Verifique se o arquivo .xlsb está na raiz do repositório e se o requirements contém pyxlsb.')
 
