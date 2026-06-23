@@ -1,6 +1,5 @@
 import os
 from datetime import datetime
-
 import pandas as pd
 import streamlit as st
 
@@ -13,7 +12,7 @@ MESES_BR = {
     '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez'
 }
 
-# Metas trazidas do dashboard_bi.py
+# Metas do dashboard_bi.py
 METAS_CLARO_BRASIL = {
     "01/2025": 76.09, "02/2025": 74.38, "03/2025": 79.52, "04/2025": 72.28,
     "05/2025": 81.73, "06/2025": 88.07, "07/2025": 82.91, "08/2025": 89.19,
@@ -22,9 +21,8 @@ METAS_CLARO_BRASIL = {
     "05/2026": 94.31, "06/2026": 94.21, "07/2026": 94.36, "08/2026": 95.80,
     "09/2026": 95.36, "10/2026": 95.47, "11/2026": 95.56, "12/2026": 95.47
 }
-METAS_CLARO_BRASIL = {"01/2025": 76.09, "02/2025": 74.38, "03/2025": 79.52, "04/2025": 72.28, "05/2025": 81.73, "06/2025": 88.07, "07/2025": 82.91, "08/2025": 89.19, "09/2025": 92.77, "10/2025": 88.68, "11/2025": 82.47, "12/2025": 85.94, "01/2026": 94.45, "02/2026": 94.65, "03/2026": 94.63, "04/2026": 94.93, "05/2026": 94.31, "06/2026": 94.21, "07/2026": 94.36, "08/2026": 95.80, "09/2026": 95.36, "10/2026": 95.47, "11/2026": 95.56, "12/2026": 95.47}
 METAS_NET = {"01/2026": 90.00, "02/2026": 90.00, "03/2026": 90.00, "04/2026": 90.00, "05/2026": 90.00, "06/2026": 90.00, "07/2026": 90.00, "08/2026": 92.00, "09/2026": 92.00, "10/2026": 92.00, "11/2026": 92.00, "12/2026": 92.00}
-METAS_CLARO_TV = {"01/2026": 85.02, "02/2026": 85.11, "03/2026": 85.19,  "04/2026": 85.04, "05/2026": 84.80, "06/2026": 84.90, "07/2026": 85.19, "08/2026": 84.77, "09/2026": 84.97, "10/2026": 84.97, "11/2026": 85.05, "12/2026": 84.97}
+METAS_CLARO_TV = {"01/2026": 85.02, "02/2026": 85.11, "03/2026": 85.19, "04/2026": 85.04, "05/2026": 84.80, "06/2026": 84.90, "07/2026": 85.19, "08/2026": 84.77, "09/2026": 84.97, "10/2026": 84.97, "11/2026": 85.05, "12/2026": 84.97}
 METAS_EMBRATEL = {"01/2026": 80.00, "02/2026": 80.00, "03/2026": 80.01, "04/2026": 80.02, "05/2026": 80.01, "06/2026": 79.99, "07/2026": 79.99, "08/2026": 82.00, "09/2026": 81.98, "10/2026": 82.01, "11/2026": 82.00, "12/2026": 82.00}
 METAS_CLARO_MOVEL = {"01/2026": 99.50, "02/2026": 99.50, "03/2026": 99.50, "04/2026": 99.50, "05/2026": 99.50, "06/2026": 99.50, "07/2026": 99.50, "08/2026": 99.50, "09/2026": 99.50, "10/2026": 99.50, "11/2026": 99.50, "12/2026": 99.50}
 
@@ -33,6 +31,7 @@ st.markdown(
     <style>
     .stApp { background: #efeae2; }
     .main .block-container { max-width: 1120px; padding-top: 1rem; padding-bottom: 1rem; }
+
     .topbar {
         background: linear-gradient(90deg, #075E54 0%, #0b6d62 100%);
         color: white; padding: 14px 16px; border-radius: 14px; margin-bottom: 14px;
@@ -44,6 +43,7 @@ st.markdown(
     }
     .topbar-title { font-size: 18px; font-weight: 700; line-height: 1.2; margin: 0; }
     .topbar-subtitle { font-size: 12px; opacity: 0.92; margin-top: 2px; }
+
     .menu-info {
         background: #ffffff; padding: 10px 12px; border-radius: 10px; margin: 8px 0 14px 0;
         border-left: 4px solid #25D366; box-shadow: 0 1px 2px rgba(0,0,0,0.06);
@@ -54,6 +54,7 @@ st.markdown(
     }
     .card-title { font-size: 18px; font-weight: 700; color: #075E54; margin-bottom: 6px; }
     .card-subtitle { font-size: 12px; color: #667781; margin-bottom: 14px; }
+
     .metric-box {
         background: #f7f7f7; border: 1px solid #e3e3e3; border-radius: 12px; padding: 12px;
         text-align: center; min-height: 290px; display: flex; flex-direction: column; justify-content: flex-start;
@@ -61,11 +62,66 @@ st.markdown(
     .metric-label { font-size: 12px; color: #667781; margin-bottom: 4px; }
     .metric-value { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
     .metric-meta { font-size: 12px; font-weight: 700; color: #667781; margin-bottom: 8px; }
-    .metric-list { margin-top: 10px; padding-top: 8px; border-top: 1px solid #e6e6e6; text-align: left; }
-    .metric-list-title { font-size: 11px; color: #667781; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.02em; }
-    .metric-line { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 2px 0; line-height: 1.45; }
+    .metric-list {
+        margin-top: 10px; padding-top: 8px; border-top: 1px solid #e6e6e6; text-align: left;
+    }
+    .metric-list-title {
+        font-size: 11px; color: #667781; font-weight: 700; margin-bottom: 6px;
+        text-transform: uppercase; letter-spacing: 0.02em;
+    }
+    .metric-line {
+        display: flex; justify-content: space-between; gap: 8px; font-size: 12px;
+        padding: 2px 0; line-height: 1.45;
+    }
     .metric-name { font-weight: 600; color: #1f2937; }
     .metric-pct { font-weight: 700; }
+
+    /* D+1 Empresas: mesma linguagem visual do D+0/D+2, sem caixas extras */
+    .empresa-head,
+    .empresa-row {
+        display: grid;
+        grid-template-columns: minmax(120px, 1fr) 78px 78px;
+        gap: 8px;
+        align-items: center;
+        font-size: 12px;
+        line-height: 1.45;
+    }
+    .empresa-head {
+        padding: 2px 0 4px 0;
+        margin-bottom: 4px;
+    }
+    .empresa-head .col-emp {
+        text-align: left;
+        font-weight: 600;
+        color: #1f2937;
+        white-space: nowrap;
+    }
+    .empresa-head .col-sla,
+    .empresa-head .col-meta {
+        text-align: center;
+        font-weight: 700;
+        color: #1f2937;
+        white-space: nowrap;
+    }
+    .empresa-row .col-emp {
+        text-align: left;
+        font-weight: 600;
+        color: #1f2937;
+        white-space: nowrap !important;
+        word-break: keep-all !important;
+        overflow-wrap: normal !important;
+        writing-mode: horizontal-tb !important;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+    .empresa-row .col-sla,
+    .empresa-row .col-meta {
+        text-align: right;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
     .month-list-box {
         background: #ffffff; border-radius: 14px; padding: 16px; margin-top: 10px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.08); border: 1px solid #e6e6e6;
@@ -113,6 +169,7 @@ st.markdown(
         background: rgba(7, 94, 84, 0.06); border-radius: 8px; padding: 4px 8px;
     }
     .notranslate { white-space: nowrap; }
+
     @media (max-width: 768px) {
         .main .block-container { max-width: 100% !important; padding-left: 0.7rem; padding-right: 0.7rem; }
         .topbar { padding: 12px 14px; }
@@ -121,7 +178,9 @@ st.markdown(
         .month-header-offensores, .month-header { font-size: 10px; gap: 6px; }
         .month-line { font-size: 12px; gap: 6px; }
         .month-cd, .month-pct-cd, .month-header .col-cd, .month-header .col-pct-cd { padding: 4px 6px; }
+        .empresa-head, .empresa-row { grid-template-columns: minmax(102px, 1fr) 66px 66px; gap: 6px; }
     }
+
     div.stButton > button {
         border-radius: 10px !important; border: 1px solid #d0d7de !important; min-height: 42px !important;
         font-weight: 600 !important; background: white !important;
@@ -148,10 +207,7 @@ def fmt_pct(valor: float) -> str:
 
 
 def normalizar_categoria(s: pd.Series, valor_padrao='Não informado') -> pd.Series:
-    s = (s.fillna(valor_padrao)
-           .astype(str)
-           .str.replace('\u00A0', '', regex=False)
-           .str.strip())
+    s = (s.fillna(valor_padrao).astype(str).str.replace('\u00A0', '', regex=False).str.strip())
     return s.replace({'': valor_padrao, 'nan': valor_padrao, 'NaN': valor_padrao, 'None': valor_padrao, '<NA>': valor_padrao, 'undefined': valor_padrao})
 
 
@@ -230,8 +286,8 @@ def construir_visao_geral(df: pd.DataFrame) -> list:
         else:
             pior_cd = 'Não informado'
             pior_cd_pct = '0,00%'
-        mes_label = mes_br(mes)
         meta_mes = meta_empresa_mes(mes)
+        mes_label = mes_br(mes)
         linhas.append((mes_label, fmt_pct(metrica['D+1']), pior_cd, pior_cd_pct, meta_mes))
     return linhas
 
@@ -240,6 +296,7 @@ def construir_visao_grupo(df: pd.DataFrame, coluna: str) -> dict:
     meses = sorted(df['Mes_Ano'].dropna().unique(), key=lambda x: datetime.strptime(x, '%m/%Y'))
     mes_atual = meses[-1] if meses else None
     base = df[df['Mes_Ano'] == mes_atual].copy() if mes_atual else df.head(0).copy()
+    metrica_base = calc_metrica(base)
     meta_atual = meta_empresa_mes(mes_atual) if mes_atual else 85.0
     resultado = {}
     for chave in ['D+0', 'D+1', 'D+2']:
@@ -250,7 +307,12 @@ def construir_visao_grupo(df: pd.DataFrame, coluna: str) -> dict:
                 meta_item = meta_empresa_mes(mes_atual, str(nome)) if (coluna == 'Empresa' and mes_atual and chave == 'D+1') else None
                 itens.append((str(nome), fmt_pct(m), meta_item))
             itens = sorted(itens, key=lambda x: float(x[1].replace('%', '').replace(',', '.')))
-        resultado[chave] = {'geral': fmt_pct(calc_metrica(base)[chave]), 'itens': itens, 'meta_atual': meta_atual, 'mes_atual': mes_atual}
+        resultado[chave] = {
+            'geral': fmt_pct(metrica_base[chave]),
+            'itens': itens,
+            'meta_atual': meta_atual,
+            'mes_atual': mes_atual
+        }
     return resultado
 
 
@@ -273,37 +335,23 @@ def render_metricas_sla(sla_dict: dict, lista_titulo: str, coluna: str):
     for col, (label, value_dict) in zip([c1, c2, c3], sla_dict.items()):
         meta_atual = value_dict.get('meta_atual', 85.0)
         mes_atual = value_dict.get('mes_atual')
-        linhas_html = ''
         if coluna == 'Empresa' and label == 'D+1':
-    linhas_html = (
-        '<div class="empresa-head">'
-        '<span class="col-emp"></span>'
-        '<span class="col-sla">SLA</span>'
-        '<span class="col-meta">Meta</span>'
-        '</div>'
-    )
-
-    for nome, pct, meta_item in value_dict['itens']:
-        meta_ref = meta_item if meta_item is not None else meta_atual
-        meta_txt = fmt_pct(meta_ref)
-        cor = cor_percentual_card(label, pct, meta_ref)
-
-        linhas_html += (
-            '<div class="empresa-row">'
-            f'<span class="col-emp">{nome}</span>'
-            f'<span class="col-sla" style="color:{cor};">{pct}</span>'
-            f'<span class="col-meta">{meta_txt}</span>'
-            '</div>'
-        )
-            linhas_html += '<div class="metric-line" style="font-weight:800;border-bottom:1px solid #e6e6e6;padding-bottom:4px;margin-bottom:4px;"><span class="metric-pct"></span><span class="metric-pct">SLA</span><span class="metric-pct">Meta</span></div>'
+            linhas_html = (
+                '<div class="empresa-head">'
+                '<span class="col-emp"></span>'
+                '<span class="col-sla">SLA</span>'
+                '<span class="col-meta">Meta</span>'
+                '</div>'
+            )
             for nome, pct, meta_item in value_dict['itens']:
-                meta_txt = fmt_pct(meta_item if meta_item is not None else meta_atual)
-                cor = cor_percentual_card(label, pct, meta_item if meta_item is not None else meta_atual)
+                meta_ref = meta_item if meta_item is not None else meta_atual
+                meta_txt = fmt_pct(meta_ref)
+                cor = cor_percentual_card(label, pct, meta_ref)
                 linhas_html += (
-                    '<div class="metric-line">'
-                    f'<span class="metric-name">{nome}</span>'
-                    f'<span class="metric-pct" style="color:{cor};">{pct}</span>'
-                    f'<span class="metric-pct">{meta_txt}</span>'
+                    '<div class="empresa-row">'
+                    f'<span class="col-emp">{nome}</span>'
+                    f'<span class="col-sla" style="color:{cor};font-weight:700;">{pct}</span>'
+                    f'<span class="col-meta" style="font-weight:700;">{meta_txt}</span>'
                     '</div>'
                 )
         else:
