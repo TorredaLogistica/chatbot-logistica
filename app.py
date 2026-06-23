@@ -81,13 +81,13 @@ st.markdown(
     .empresa-head,
     .empresa-row {
         display: grid;
-        grid-template-columns: minmax(92px, 2fr) 40px 40px;
+        grid-template-columns: minmax(100px, 1fr) 40px 40px;
         column-gap: 3px;
         align-items: center;
         font-size: 12px;
         line-height: 1.45;
-        width: calc(100% - 16px);
-        max-width: calc(100% - 16px);
+        width: calc(100% - 18px);
+        max-width: calc(100% - 18px);
         padding-right: 18px;
         box-sizing: border-box;
         overflow: hidden;
