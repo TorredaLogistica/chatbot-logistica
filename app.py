@@ -81,14 +81,14 @@ st.markdown(
     .empresa-head,
     .empresa-row {
         display: grid;
-        grid-template-columns: minmax(96px, 1fr) 60px 60px;
-        column-gap: 4px;
+        grid-template-columns: minmax(92px, 1fr) 54px 54px;
+        column-gap: 2px;
         align-items: center;
         font-size: 12px;
         line-height: 1.45;
-        width: calc(100% - 8px);
-        max-width: calc(100% - 8px);
-        padding-right: 8px;
+        width: calc(100% - 18px);
+        max-width: calc(100% - 18px);
+        padding-right: 18px;
         box-sizing: border-box;
         overflow: hidden;
     }
