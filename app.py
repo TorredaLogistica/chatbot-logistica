@@ -12,7 +12,6 @@ MESES_BR = {
     '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez'
 }
 
-# Metas do dashboard_bi.py
 METAS_CLARO_BRASIL = {
     "01/2025": 76.09, "02/2025": 74.38, "03/2025": 79.52, "04/2025": 72.28,
     "05/2025": 81.73, "06/2025": 88.07, "07/2025": 82.91, "08/2025": 89.19,
@@ -62,9 +61,7 @@ st.markdown(
     .metric-label { font-size: 12px; color: #667781; margin-bottom: 4px; }
     .metric-value { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
     .metric-meta { font-size: 12px; font-weight: 700; color: #667781; margin-bottom: 8px; }
-    .metric-list {
-        margin-top: 10px; padding-top: 8px; border-top: 1px solid #e6e6e6; text-align: left;
-    }
+    .metric-list { margin-top: 10px; padding-top: 8px; border-top: 1px solid #e6e6e6; text-align: left; }
     .metric-list-title {
         font-size: 11px; color: #667781; font-weight: 700; margin-bottom: 6px;
         text-transform: uppercase; letter-spacing: 0.02em;
@@ -76,12 +73,12 @@ st.markdown(
     .metric-name { font-weight: 600; color: #1f2937; }
     .metric-pct { font-weight: 700; }
 
-    /* D+1 Empresas: mesma linguagem visual do D+0/D+2, sem caixas extras */
+    /* D+1 Empresas alinhado, mantendo padrão visual dos demais cards */
     .empresa-head,
     .empresa-row {
         display: grid;
-        grid-template-columns: minmax(120px, 1fr) 78px 78px;
-        gap: 8px;
+        grid-template-columns: minmax(96px, 1fr) 72px 72px;
+        column-gap: 6px;
         align-items: center;
         font-size: 12px;
         line-height: 1.45;
@@ -98,7 +95,9 @@ st.markdown(
     }
     .empresa-head .col-sla,
     .empresa-head .col-meta {
-        text-align: center;
+        width: 72px;
+        justify-self: end;
+        text-align: right;
         font-weight: 700;
         color: #1f2937;
         white-space: nowrap;
@@ -117,6 +116,8 @@ st.markdown(
     }
     .empresa-row .col-sla,
     .empresa-row .col-meta {
+        width: 72px;
+        justify-self: end;
         text-align: right;
         font-weight: 700;
         white-space: nowrap;
@@ -178,7 +179,9 @@ st.markdown(
         .month-header-offensores, .month-header { font-size: 10px; gap: 6px; }
         .month-line { font-size: 12px; gap: 6px; }
         .month-cd, .month-pct-cd, .month-header .col-cd, .month-header .col-pct-cd { padding: 4px 6px; }
-        .empresa-head, .empresa-row { grid-template-columns: minmax(102px, 1fr) 66px 66px; gap: 6px; }
+        .empresa-head, .empresa-row { grid-template-columns: minmax(88px, 1fr) 60px 60px; column-gap: 4px; }
+        .empresa-head .col-sla, .empresa-head .col-meta,
+        .empresa-row .col-sla, .empresa-row .col-meta { width: 60px; }
     }
 
     div.stButton > button {
