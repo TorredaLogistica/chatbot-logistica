@@ -4,6 +4,7 @@ import calendar
 import unicodedata
 from pathlib import Path
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
@@ -702,18 +703,21 @@ def render_visao_geral_meses(linhas: list):
 # LOG DE ACESSOS + DASHBOARD DE ACESSOS
 # =========================================================
 LOG_ACESSOS = "log_torre_acessos.xlsx"
+FUSO_HORARIO_LOG = "America/Sao_Paulo"
 
 
 def registrar_log(nome_usuario: str, indicador: str, detalhe: str = ""):
-    """Registra no Excel cada acesso/click realizado dentro da Torre."""
+    """Registra no Excel cada acesso/click realizado dentro da Torre usando horário de São Paulo."""
     try:
         nome_usuario = (nome_usuario or "Usuário").strip()
         indicador = (indicador or "Não informado").strip()
         detalhe = (detalhe or "").strip()
 
+        data_hora_sp = datetime.now(ZoneInfo(FUSO_HORARIO_LOG)).replace(tzinfo=None)
+
         novo = pd.DataFrame([{
             "Usuario": nome_usuario,
-            "Data": datetime.now(),
+            "Data": data_hora_sp,
             "Indicador acessado": indicador,
             "Detalhe": detalhe
         }])
@@ -729,7 +733,6 @@ def registrar_log(nome_usuario: str, indicador: str, detalhe: str = ""):
 
         base.to_excel(LOG_ACESSOS, index=False, engine="openpyxl")
     except Exception as e:
-        # Não interrompe o app caso o log falhe.
         st.toast(f"Não foi possível registrar o log: {e}", icon="⚠️")
 
 
