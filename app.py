@@ -7,30 +7,6 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-
-
-
-def registrar_log(nome_usuario, indicador):
-    arquivo = "log_torre_acessos.xlsx"
-
-    novo = pd.DataFrame([{
-        "Usuario": nome_usuario,
-        "Data": datetime.now(),
-        "Indicador": indicador
-    }])
-
-    if os.path.exists(arquivo):
-        base = pd.read_excel(arquivo)
-        base = pd.concat([base, novo], ignore_index=True)
-    else:
-        base = novo
-
-    base.to_excel(arquivo, index=False)
-
-
-
-
-
 st.set_page_config(page_title="Portal Torre Logística", layout="centered")
 
 ARQUIVO_BASE = "Faturamento SLA 2026.xlsb"
@@ -722,46 +698,143 @@ def render_visao_geral_meses(linhas: list):
     st.markdown(html, unsafe_allow_html=True)
 
 
+# =========================================================
+# LOG DE ACESSOS + DASHBOARD DE ACESSOS
+# =========================================================
+LOG_ACESSOS = "log_torre_acessos.xlsx"
+
+
+def registrar_log(nome_usuario: str, indicador: str, detalhe: str = ""):
+    """Registra no Excel cada acesso/click realizado dentro da Torre."""
+    try:
+        nome_usuario = (nome_usuario or "Usuário").strip()
+        indicador = (indicador or "Não informado").strip()
+        detalhe = (detalhe or "").strip()
+
+        novo = pd.DataFrame([{
+            "Usuario": nome_usuario,
+            "Data": datetime.now(),
+            "Indicador acessado": indicador,
+            "Detalhe": detalhe
+        }])
+
+        if os.path.exists(LOG_ACESSOS):
+            try:
+                base = pd.read_excel(LOG_ACESSOS, engine="openpyxl")
+            except Exception:
+                base = pd.DataFrame(columns=["Usuario", "Data", "Indicador acessado", "Detalhe"])
+            base = pd.concat([base, novo], ignore_index=True)
+        else:
+            base = novo
+
+        base.to_excel(LOG_ACESSOS, index=False, engine="openpyxl")
+    except Exception as e:
+        # Não interrompe o app caso o log falhe.
+        st.toast(f"Não foi possível registrar o log: {e}", icon="⚠️")
+
+
+def carregar_log_acessos() -> pd.DataFrame:
+    """Carrega o arquivo de log, padronizando as colunas esperadas."""
+    colunas = ["Usuario", "Data", "Indicador acessado", "Detalhe"]
+
+    if not os.path.exists(LOG_ACESSOS):
+        return pd.DataFrame(columns=colunas)
+
+    try:
+        df_log = pd.read_excel(LOG_ACESSOS, engine="openpyxl")
+    except Exception:
+        return pd.DataFrame(columns=colunas)
+
+    for col in colunas:
+        if col not in df_log.columns:
+            df_log[col] = "" if col != "Data" else pd.NaT
+
+    df_log = df_log[colunas].copy()
+    df_log["Data"] = pd.to_datetime(df_log["Data"], errors="coerce")
+    return df_log
+
 
 def dashboard_acessos():
+    """Exibe o dashboard de acessos dentro do próprio app."""
     st.markdown("## 📊 Dashboard de Acessos - Torre de Controle")
 
-    arquivo = "log_torre_acessos.xlsx"
+    df_log = carregar_log_acessos()
 
-    if not os.path.exists(arquivo):
+    if df_log.empty:
         st.warning("Ainda não há registros de acessos.")
         return
 
-    df = pd.read_excel(arquivo)
-    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df_log = df_log.dropna(subset=["Data"]).copy()
+    if df_log.empty:
+        st.warning("O arquivo de log existe, mas ainda não possui datas válidas.")
+        return
 
-    # KPIs
-    total_acessos = len(df)
-    usuarios_unicos = df["Usuario"].nunique()
+    data_min = df_log["Data"].min().date()
+    data_max = df_log["Data"].max().date()
 
-    c1, c2 = st.columns(2)
-    c1.metric("Total de acessos", total_acessos)
-    c2.metric("Usuários únicos", usuarios_unicos)
+    st.markdown("### 🔎 Filtros")
+    col_f1, col_f2 = st.columns(2)
+    data_inicio = col_f1.date_input("Data início", value=data_min, format="DD/MM/YYYY")
+    data_fim = col_f2.date_input("Data fim", value=data_max, format="DD/MM/YYYY")
 
-    # Ranking indicadores
+    inicio = pd.to_datetime(data_inicio)
+    fim = pd.to_datetime(data_fim) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+    df_filtrado = df_log[(df_log["Data"] >= inicio) & (df_log["Data"] <= fim)].copy()
+
+    if df_filtrado.empty:
+        st.info("Não há acessos registrados para o período selecionado.")
+        return
+
+    total_acessos = len(df_filtrado)
+    usuarios_unicos = df_filtrado["Usuario"].nunique()
+    indicadores_unicos = df_filtrado["Indicador acessado"].nunique()
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total de acessos", f"{total_acessos:,}".replace(",", "."))
+    c2.metric("Usuários únicos", f"{usuarios_unicos:,}".replace(",", "."))
+    c3.metric("Indicadores acessados", f"{indicadores_unicos:,}".replace(",", "."))
+
     st.markdown("### 📌 Indicadores mais acessados")
-    ranking_indicadores = df["Indicador"].value_counts().reset_index()
-    ranking_indicadores.columns = ["Indicador", "Qtd Acessos"]
-    st.dataframe(ranking_indicadores, use_container_width=True)
+    ranking_indicadores = (
+        df_filtrado["Indicador acessado"]
+        .fillna("Não informado")
+        .value_counts()
+        .reset_index()
+    )
+    ranking_indicadores.columns = ["Indicador acessado", "Qtd Acessos"]
+    st.dataframe(ranking_indicadores, use_container_width=True, hide_index=True)
+    st.bar_chart(ranking_indicadores.set_index("Indicador acessado"))
 
-    # Ranking usuários
     st.markdown("### 👤 Usuários mais ativos")
-    ranking_usuarios = df["Usuario"].value_counts().reset_index()
+    ranking_usuarios = (
+        df_filtrado["Usuario"]
+        .fillna("Usuário")
+        .value_counts()
+        .reset_index()
+    )
     ranking_usuarios.columns = ["Usuario", "Qtd Acessos"]
-    st.dataframe(ranking_usuarios, use_container_width=True)
+    st.dataframe(ranking_usuarios, use_container_width=True, hide_index=True)
 
-    # Últimos acessos
+    st.markdown("### 📅 Acessos por dia")
+    acessos_dia = df_filtrado.copy()
+    acessos_dia["Dia"] = acessos_dia["Data"].dt.date
+    acessos_dia = acessos_dia.groupby("Dia").size().reset_index(name="Qtd Acessos")
+    st.line_chart(acessos_dia.set_index("Dia"))
+
     st.markdown("### 🕒 Últimos acessos")
-    df = df.sort_values(by="Data", ascending=False)
-    df["Data"] = df["Data"].dt.strftime("%d/%m/%Y %H:%M")
-    st.dataframe(df, use_container_width=True)
+    ultimos = df_filtrado.sort_values("Data", ascending=False).copy()
+    ultimos["Data"] = ultimos["Data"].dt.strftime("%d/%m/%Y %H:%M:%S")
+    st.dataframe(ultimos, use_container_width=True, hide_index=True)
 
-
+    if os.path.exists(LOG_ACESSOS):
+        with open(LOG_ACESSOS, "rb") as f:
+            st.download_button(
+                label="⬇️ Baixar log em Excel",
+                data=f,
+                file_name="log_torre_acessos.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
 
 
 if 'step' not in st.session_state:
@@ -810,114 +883,143 @@ if st.session_state.step == 0:
 
 elif st.session_state.step == 1:
     st.success(f"Prazer, {st.session_state.nome}!")
-    st.markdown('<div class="menu-info"><strong>Opções disponíveis:</strong><br>Separação e Faturamento | Pedidos para LPs | Resultado do DRE | Valores dos EAs</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="menu-info"><strong>Opções disponíveis:</strong><br>'
+        'Separação e Faturamento | Pedidos para LPs | Resultado do DRE | Valores dos EAs | Dashboard de Acessos</div>',
+        unsafe_allow_html=True
+    )
+
     c1, c2, c3, c4, c5 = st.columns(5)
-    
-    if c5.button('Dashboard de Acessos', use_container_width=True):
-    st.session_state.indicador = 'dashboard'
-    st.session_state.step = 2
-    st.rerun()
 
-    
     if c1.button('Separação e Faturamento', use_container_width=True):
-    registrar_log(st.session_state.nome, "Separação e Faturamento")
-
+        registrar_log(st.session_state.nome, "Separação e Faturamento", "Menu principal")
         st.session_state.indicador = 'sf'
         st.session_state.sf_visao = None
         st.session_state.sf_vol_tipo_data = None
         st.session_state.sf_vol_empresa = 'Geral'
         st.session_state.step = 2
         st.rerun()
-    
-   if c2.button('Pedidos para LPs', use_container_width=True):
-    registrar_log(st.session_state.nome, "Pedidos para LPs")
 
+    if c2.button('Pedidos para LPs', use_container_width=True):
+        registrar_log(st.session_state.nome, "Pedidos para LPs", "Menu principal")
         st.warning('No momento o fluxo de Pedidos para LPs está em construção.')
-    
-   if c3.button('Resultado do DRE', use_container_width=True):
-    registrar_log(st.session_state.nome, "Resultado do DRE")
 
+    if c3.button('Resultado do DRE', use_container_width=True):
+        registrar_log(st.session_state.nome, "Resultado do DRE", "Menu principal")
         st.warning('No momento o fluxo de Resultado do DRE está em construção.')
-    
-if c4.button('Valores dos EAs', use_container_width=True):
-    registrar_log(st.session_state.nome, "Valores dos EAs")
 
+    if c4.button('Valores dos EAs', use_container_width=True):
+        registrar_log(st.session_state.nome, "Valores dos EAs", "Menu principal")
         st.warning('No momento o fluxo de Valores dos EAs está em construção.')
 
-elif st.session_state.step == 2 and st.session_state.indicador == 'sf':
-    
-elif st.session_state.indicador == 'dashboard':
-    dashboard_acessos()
-
-    st.markdown('<div class="menu-info"><strong>Opções disponíveis:</strong><br>Visão Geral | Visão por CDs | Visão por Empresas | Volumetria de Pedidos</div>', unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns(4)
-    if c1.button('Visão Geral', use_container_width=True):
-        st.session_state.sf_visao = 'geral'
-        st.session_state.sf_vol_tipo_data = None
-        st.rerun()
-    if c2.button('Visão por CDs', use_container_width=True):
-        st.session_state.sf_visao = 'cds'
-        st.session_state.sf_vol_tipo_data = None
-        st.rerun()
-    if c3.button('Visão por Empresas', use_container_width=True):
-        st.session_state.sf_visao = 'empresas'
-        st.session_state.sf_vol_tipo_data = None
-        st.rerun()
-    if c4.button('Volumetria de Pedidos', use_container_width=True):
-        st.session_state.sf_visao = 'volumetria'
-        st.session_state.sf_vol_tipo_data = None
-        st.session_state.sf_vol_empresa = 'Geral'
+    if c5.button('Dashboard de Acessos', use_container_width=True):
+        registrar_log(st.session_state.nome, "Dashboard de Acessos", "Menu principal")
+        st.session_state.indicador = 'dashboard_acessos'
+        st.session_state.step = 2
         st.rerun()
 
-    if base_real is not None:
-        if st.session_state.sf_visao == 'geral':
-            render_visao_geral_meses(construir_visao_geral(base_real))
-        elif st.session_state.sf_visao == 'cds':
-            render_card_titulo('Separação e Faturamento | Visão por CDs | SLA do mês atual', 'Dados reais da base Faturamento SLA 2026.xlsb.')
-            render_metricas_sla(construir_visao_grupo(base_real, 'CD Origem'), 'CDs', 'CD Origem')
-        elif st.session_state.sf_visao == 'empresas':
-            render_card_titulo('Separação e Faturamento | Visão por Empresas | SLA do mês atual', 'Dados reais da base Faturamento SLA 2026.xlsb.')
-            render_metricas_sla(construir_visao_grupo(base_real, 'Empresa'), 'Empresas', 'Empresa')
-        elif st.session_state.sf_visao == 'volumetria':
-            render_card_titulo('Volumetria de Pedidos', 'Selecione a referência da data e, se necessário, filtre por empresa.')
-            dt1, dt2 = st.columns(2)
-            if dt1.button('Data da NF', use_container_width=True):
-                st.session_state.sf_vol_tipo_data = 'nf'
-                st.session_state.sf_vol_empresa = 'Geral'
-                st.rerun()
-            if dt2.button('Data Corte da Fatura', use_container_width=True):
-                st.session_state.sf_vol_tipo_data = 'corte'
-                st.session_state.sf_vol_empresa = 'Geral'
-                st.rerun()
+elif st.session_state.step == 2:
+    if st.session_state.indicador == 'dashboard_acessos':
+        dashboard_acessos()
 
-            if st.session_state.sf_vol_tipo_data:
-                st.markdown('<div class="menu-info"><strong>Empresa:</strong><br>Geral | Claro Fixo | Claro Móvel | Claro TV | Embratel | NET</div>', unsafe_allow_html=True)
-                empresas = ['Geral', 'Claro Fixo', 'Claro Móvel', 'Claro TV', 'Embratel', 'NET']
-                cols_emp = st.columns(3)
-                for idx, empresa in enumerate(empresas):
-                    with cols_emp[idx % 3]:
-                        if st.button(empresa, key=f'btn_vol_empresa_{empresa}', use_container_width=True):
-                            st.session_state.sf_vol_empresa = empresa
-                            st.rerun()
-                render_volumetria_pedidos(base_real, st.session_state.sf_vol_tipo_data, st.session_state.sf_vol_empresa)
-            else:
-                st.info('Clique em Data da NF ou Data Corte da Fatura para abrir a volumetria dos últimos 6 meses.')
+        c1, c2 = st.columns(2)
+        if c1.button('Voltar aos indicadores', use_container_width=True):
+            st.session_state.step = 1
+            st.session_state.indicador = None
+            st.rerun()
+        if c2.button('Reiniciar conversa', use_container_width=True):
+            st.session_state.step = 0
+            st.session_state.nome = ''
+            st.session_state.indicador = None
+            st.session_state.sf_visao = None
+            st.session_state.sf_vol_tipo_data = None
+            st.session_state.sf_vol_empresa = 'Geral'
+            st.rerun()
+
+    elif st.session_state.indicador == 'sf':
+        st.markdown('<div class="menu-info"><strong>Opções disponíveis:</strong><br>Visão Geral | Visão por CDs | Visão por Empresas | Volumetria de Pedidos</div>', unsafe_allow_html=True)
+        c1, c2, c3, c4 = st.columns(4)
+        if c1.button('Visão Geral', use_container_width=True):
+            registrar_log(st.session_state.nome, "Separação e Faturamento", "Visão Geral")
+            st.session_state.sf_visao = 'geral'
+            st.session_state.sf_vol_tipo_data = None
+            st.rerun()
+        if c2.button('Visão por CDs', use_container_width=True):
+            registrar_log(st.session_state.nome, "Separação e Faturamento", "Visão por CDs")
+            st.session_state.sf_visao = 'cds'
+            st.session_state.sf_vol_tipo_data = None
+            st.rerun()
+        if c3.button('Visão por Empresas', use_container_width=True):
+            registrar_log(st.session_state.nome, "Separação e Faturamento", "Visão por Empresas")
+            st.session_state.sf_visao = 'empresas'
+            st.session_state.sf_vol_tipo_data = None
+            st.rerun()
+        if c4.button('Volumetria de Pedidos', use_container_width=True):
+            registrar_log(st.session_state.nome, "Separação e Faturamento", "Volumetria de Pedidos")
+            st.session_state.sf_visao = 'volumetria'
+            st.session_state.sf_vol_tipo_data = None
+            st.session_state.sf_vol_empresa = 'Geral'
+            st.rerun()
+
+        if base_real is not None:
+            if st.session_state.sf_visao == 'geral':
+                render_visao_geral_meses(construir_visao_geral(base_real))
+            elif st.session_state.sf_visao == 'cds':
+                render_card_titulo('Separação e Faturamento | Visão por CDs | SLA do mês atual', 'Dados reais da base Faturamento SLA 2026.xlsb.')
+                render_metricas_sla(construir_visao_grupo(base_real, 'CD Origem'), 'CDs', 'CD Origem')
+            elif st.session_state.sf_visao == 'empresas':
+                render_card_titulo('Separação e Faturamento | Visão por Empresas | SLA do mês atual', 'Dados reais da base Faturamento SLA 2026.xlsb.')
+                render_metricas_sla(construir_visao_grupo(base_real, 'Empresa'), 'Empresas', 'Empresa')
+            elif st.session_state.sf_visao == 'volumetria':
+                render_card_titulo('Volumetria de Pedidos', 'Selecione a referência da data e, se necessário, filtre por empresa.')
+                dt1, dt2 = st.columns(2)
+                if dt1.button('Data da NF', use_container_width=True):
+                    registrar_log(st.session_state.nome, "Volumetria de Pedidos", "Data da NF")
+                    st.session_state.sf_vol_tipo_data = 'nf'
+                    st.session_state.sf_vol_empresa = 'Geral'
+                    st.rerun()
+                if dt2.button('Data Corte da Fatura', use_container_width=True):
+                    registrar_log(st.session_state.nome, "Volumetria de Pedidos", "Data Corte da Fatura")
+                    st.session_state.sf_vol_tipo_data = 'corte'
+                    st.session_state.sf_vol_empresa = 'Geral'
+                    st.rerun()
+
+                if st.session_state.sf_vol_tipo_data:
+                    st.markdown('<div class="menu-info"><strong>Empresa:</strong><br>Geral | Claro Fixo | Claro Móvel | Claro TV | Embratel | NET</div>', unsafe_allow_html=True)
+                    empresas = ['Geral', 'Claro Fixo', 'Claro Móvel', 'Claro TV', 'Embratel', 'NET']
+                    cols_emp = st.columns(3)
+                    for idx, empresa in enumerate(empresas):
+                        with cols_emp[idx % 3]:
+                            if st.button(empresa, key=f'btn_vol_empresa_{empresa}', use_container_width=True):
+                                registrar_log(st.session_state.nome, "Volumetria de Pedidos", f"Empresa: {empresa}")
+                                st.session_state.sf_vol_empresa = empresa
+                                st.rerun()
+                    render_volumetria_pedidos(base_real, st.session_state.sf_vol_tipo_data, st.session_state.sf_vol_empresa)
+                else:
+                    st.info('Clique em Data da NF ou Data Corte da Fatura para abrir a volumetria dos últimos 6 meses.')
+        else:
+            st.error('Não foi possível carregar a base real. Verifique se o arquivo .xlsb está na raiz do repositório e se o requirements contém pyxlsb.')
+
+        c1, c2 = st.columns(2)
+        if c1.button('Voltar aos indicadores', use_container_width=True):
+            st.session_state.step = 1
+            st.session_state.indicador = None
+            st.session_state.sf_visao = None
+            st.session_state.sf_vol_tipo_data = None
+            st.session_state.sf_vol_empresa = 'Geral'
+            st.rerun()
+        if c2.button('Reiniciar conversa', use_container_width=True):
+            st.session_state.step = 0
+            st.session_state.nome = ''
+            st.session_state.indicador = None
+            st.session_state.sf_visao = None
+            st.session_state.sf_vol_tipo_data = None
+            st.session_state.sf_vol_empresa = 'Geral'
+            st.rerun()
+
     else:
-        st.error('Não foi possível carregar a base real. Verifique se o arquivo .xlsb está na raiz do repositório e se o requirements contém pyxlsb.')
-
-    c1, c2 = st.columns(2)
-    if c1.button('Voltar aos indicadores', use_container_width=True):
-        st.session_state.step = 1
-        st.session_state.indicador = None
-        st.session_state.sf_visao = None
-        st.session_state.sf_vol_tipo_data = None
-        st.session_state.sf_vol_empresa = 'Geral'
-        st.rerun()
-    if c2.button('Reiniciar conversa', use_container_width=True):
-        st.session_state.step = 0
-        st.session_state.nome = ''
-        st.session_state.indicador = None
-        st.session_state.sf_visao = None
-        st.session_state.sf_vol_tipo_data = None
-        st.session_state.sf_vol_empresa = 'Geral'
-        st.rerun()
+        st.warning('Indicador não reconhecido. Volte ao menu principal.')
+        if st.button('Voltar aos indicadores', use_container_width=True):
+            st.session_state.step = 1
+            st.session_state.indicador = None
+            st.rerun()
