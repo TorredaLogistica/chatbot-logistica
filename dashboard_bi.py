@@ -185,9 +185,16 @@ st.markdown(
     }
 
 
-    .vol-table-card { background: #f7f7f7; border: 1px solid #e3e3e3; border-radius: 12px; padding: 12px; }
-    .vol-header, .vol-line { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; align-items: center; }
-    .vol-header { font-size: 11px; color: #667781; font-weight: 800; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.02em; padding-bottom: 8px; border-bottom: 1px solid #e6e6e6; }
+    .vol-table-card {
+        background: #f7f7f7; border: 1px solid #e3e3e3; border-radius: 12px; padding: 12px;
+    }
+    .vol-header, .vol-line {
+        display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; align-items: center;
+    }
+    .vol-header {
+        font-size: 11px; color: #667781; font-weight: 800; margin-bottom: 6px;
+        text-transform: uppercase; letter-spacing: 0.02em; padding-bottom: 8px; border-bottom: 1px solid #e6e6e6;
+    }
     .vol-line { font-size: 13px; padding: 7px 0; border-bottom: 1px solid rgba(0,0,0,0.05); }
     .vol-line:last-child { border-bottom: none; }
     .vol-mes { font-weight: 700; color: #1f2937; }
@@ -257,6 +264,7 @@ def normalizar_chave_texto(valor: str) -> str:
 
 
 def converter_data_excel(serie: pd.Series) -> pd.Series:
+    """Converte datas do Excel/.xlsb, tratando serial numérico e texto dd/mm/aaaa."""
     s = serie.copy()
     if pd.api.types.is_numeric_dtype(s):
         return pd.to_datetime(s, unit='D', origin='1899-12-30', errors='coerce')
@@ -269,6 +277,7 @@ def converter_data_excel(serie: pd.Series) -> pd.Series:
 
 
 def score_aba_corte(df_sheet: pd.DataFrame) -> float:
+    """Critério igual ao dashboard_bi: identifica a aba de mapa de corte pelas 3 primeiras colunas."""
     if df_sheet is None or df_sheet.empty or df_sheet.shape[1] < 3:
         return -1.0
     tmp = df_sheet.iloc[:, :3].copy()
@@ -282,8 +291,10 @@ def score_aba_corte(df_sheet: pd.DataFrame) -> float:
 
 
 def aplicar_mapa_corte(df_base: pd.DataFrame, df_cortes: pd.DataFrame) -> tuple[pd.DataFrame, bool]:
+    """Aplica o mapa de corte do dashboard: Data NF dentro do intervalo início/fim."""
     if df_cortes is None or df_cortes.empty or df_cortes.shape[1] < 3:
         return df_base, False
+
     mapa_corte = df_cortes.iloc[:, :3].copy()
     mapa_corte.columns = ['Mes_Corte_Original', 'Data_Inicio_Corte', 'Data_Fim_Corte']
     mapa_corte['Data_Inicio_Corte'] = converter_data_excel(mapa_corte['Data_Inicio_Corte'])
@@ -291,25 +302,41 @@ def aplicar_mapa_corte(df_base: pd.DataFrame, df_cortes: pd.DataFrame) -> tuple[
     mapa_corte = mapa_corte.dropna(subset=['Data_Inicio_Corte', 'Data_Fim_Corte']).copy()
     if mapa_corte.empty or 'Data NF' not in df_base.columns:
         return df_base, False
+
+    # Regra do dashboard_bi: o mês de corte é definido pela data final do corte.
     mapa_corte['Mes_Corte_Fatura'] = mapa_corte['Data_Fim_Corte'].dt.strftime('%m/%Y')
-    mapa_corte = mapa_corte[['Mes_Corte_Fatura', 'Data_Inicio_Corte', 'Data_Fim_Corte']].drop_duplicates().sort_values(['Data_Fim_Corte', 'Data_Inicio_Corte']).reset_index(drop=True)
-    intervalos = pd.IntervalIndex.from_arrays(mapa_corte['Data_Inicio_Corte'], mapa_corte['Data_Fim_Corte'], closed='both')
+    mapa_corte = (
+        mapa_corte[['Mes_Corte_Fatura', 'Data_Inicio_Corte', 'Data_Fim_Corte']]
+        .drop_duplicates()
+        .sort_values(['Data_Fim_Corte', 'Data_Inicio_Corte'])
+        .reset_index(drop=True)
+    )
+
+    intervalos = pd.IntervalIndex.from_arrays(
+        mapa_corte['Data_Inicio_Corte'],
+        mapa_corte['Data_Fim_Corte'],
+        closed='both'
+    )
     idx = intervalos.get_indexer(df_base['Data NF'])
     mask_idx = idx >= 0
     if mask_idx.any():
         df_base.loc[mask_idx, 'Mes_Corte_Fatura'] = mapa_corte['Mes_Corte_Fatura'].to_numpy()[idx[mask_idx]]
         df_base.loc[mask_idx, 'Data_Inicio_Corte_Mapa'] = mapa_corte['Data_Inicio_Corte'].to_numpy()[idx[mask_idx]]
         df_base.loc[mask_idx, 'Data_Fim_Corte_Mapa'] = mapa_corte['Data_Fim_Corte'].to_numpy()[idx[mask_idx]]
+
     mapa_ordem = {mes: pos + 1 for pos, mes in enumerate(mapa_corte['Mes_Corte_Fatura'].tolist())}
     df_base['Mes_Corte_Fatura_Ordem'] = df_base['Mes_Corte_Fatura'].map(mapa_ordem)
     return df_base, bool(mask_idx.any())
 
 
 def carregar_mapa_corte_fatura(df_base: pd.DataFrame, path_base: str) -> pd.DataFrame:
+    """Traz para o app.py do chatbot o mesmo critério de corte usado no dashboard_bi.py."""
     df_base['Mes_Corte_Fatura'] = pd.NA
     df_base['Mes_Corte_Fatura_Ordem'] = pd.NA
     df_base['Data_Inicio_Corte_Mapa'] = pd.NaT
     df_base['Data_Fim_Corte_Mapa'] = pd.NaT
+
+    # 1) Tenta detectar a aba interna de cortes no próprio XLSB.
     try:
         with pd.ExcelFile(path_base, engine='pyxlsb') as xls2:
             sheet_names = [str(s).strip() for s in xls2.sheet_names]
@@ -319,7 +346,9 @@ def carregar_mapa_corte_fatura(df_base: pd.DataFrame, path_base: str) -> pd.Data
                 if achou:
                     aba_principal = achou
                     break
-            melhor_df_corte, melhor_score = None, -1.0
+
+            melhor_df_corte = None
+            melhor_score = -1.0
             for s in sheet_names:
                 if s == aba_principal:
                     continue
@@ -327,28 +356,38 @@ def carregar_mapa_corte_fatura(df_base: pd.DataFrame, path_base: str) -> pd.Data
                     df_sheet = pd.read_excel(xls2, sheet_name=s)
                     score = score_aba_corte(df_sheet)
                     if score > melhor_score:
-                        melhor_score, melhor_df_corte = score, df_sheet.copy()
+                        melhor_score = score
+                        melhor_df_corte = df_sheet.copy()
                 except Exception:
                     continue
+
             if melhor_df_corte is not None and melhor_score > 0.80:
                 df_base, ok = aplicar_mapa_corte(df_base, melhor_df_corte)
                 if ok:
                     return df_base
     except Exception:
         pass
-    if df_base['Mes_Corte_Fatura'].isna().all():
-        for nome_aux in ['datas_corte_fatura.xlsx', 'datas_corte_fatura.xlsb', 'corte_fatura.xlsx', 'corte_fatura.xlsb', 'planilha2.xlsx', 'planilha2.xlsb']:
-            p_aux = Path(nome_aux)
-            if not p_aux.exists():
-                continue
-            try:
-                df_aux = pd.read_excel(p_aux, engine='pyxlsb') if p_aux.suffix.lower() == '.xlsb' else pd.read_excel(p_aux)
-                df_aux.columns = [str(c).strip() for c in df_aux.columns]
-                df_base, ok = aplicar_mapa_corte(df_base, df_aux)
-                if ok:
-                    break
-            except Exception:
-                continue
+
+    # 2) Fallback: arquivos auxiliares iguais aos previstos no dashboard_bi.py.
+    for nome_aux in [
+        'datas_corte_fatura.xlsx', 'datas_corte_fatura.xlsb',
+        'corte_fatura.xlsx', 'corte_fatura.xlsb',
+        'planilha2.xlsx', 'planilha2.xlsb'
+    ]:
+        if not df_base['Mes_Corte_Fatura'].isna().all():
+            break
+        p_aux = Path(nome_aux)
+        if not p_aux.exists():
+            continue
+        try:
+            df_aux = pd.read_excel(p_aux, engine='pyxlsb') if p_aux.suffix.lower() == '.xlsb' else pd.read_excel(p_aux)
+            df_aux.columns = [str(c).strip() for c in df_aux.columns]
+            df_base, ok = aplicar_mapa_corte(df_base, df_aux)
+            if ok:
+                break
+        except Exception:
+            continue
+
     return df_base
 
 
@@ -356,64 +395,76 @@ def fmt_int(valor: float | int) -> str:
     return f"{int(round(float(valor))):,}".replace(',', '.')
 
 
-def contar_pedidos(df_base: pd.DataFrame) -> int:
+def contar_volume_pedidos(df_base: pd.DataFrame) -> int:
+    """Alinha ao dashboard_bi: conta Pedido quando a coluna existe; senão conta linhas."""
     if 'Pedido' in df_base.columns:
-        pedidos = df_base['Pedido'].dropna().astype(str).str.strip()
-        pedidos = pedidos[pedidos != '']
-        return int(pedidos.nunique())
+        return int(df_base['Pedido'].notna().sum())
     return int(len(df_base))
 
 
-def construir_volumetria_pedidos(df: pd.DataFrame, coluna_data: str, empresa: str | None = None) -> dict:
-    base = df[df[coluna_data].notna()].copy()
+def construir_volumetria_data_nf(df: pd.DataFrame, empresa: str | None = 'Geral') -> dict:
+    base = df[df['Data NF'].notna()].copy()
     if empresa and empresa != 'Geral' and 'Empresa' in base.columns:
         empresa_norm = normalizar_chave_texto(empresa)
         base = base[base['Empresa'].astype(str).map(normalizar_chave_texto) == empresa_norm].copy()
     if base.empty:
         return {'erro': 'Não há dados para a seleção realizada.'}
-    base['Mes_Vol'] = base[coluna_data].dt.strftime('%m/%Y')
+
+    base['Mes_Vol'] = base['Data NF'].dt.strftime('%m/%Y')
     meses = sorted(base['Mes_Vol'].dropna().unique(), key=lambda x: datetime.strptime(x, '%m/%Y'))[-6:]
     mes_atual = meses[-1] if meses else None
-    data_max = base.loc[base['Mes_Vol'] == mes_atual, coluna_data].max() if mes_atual else None
+    data_max = base.loc[base['Mes_Vol'] == mes_atual, 'Data NF'].max() if mes_atual else pd.NaT
+
     linhas = []
     for mes in meses:
         base_mes = base[base['Mes_Vol'] == mes]
-        realizado = contar_pedidos(base_mes)
+        realizado = contar_volume_pedidos(base_mes)
         projetado = None
         if mes == mes_atual and pd.notna(data_max):
             ultimo_dia_mes = calendar.monthrange(int(data_max.year), int(data_max.month))[1]
             dia_base = max(int(data_max.day), 1)
             projetado = realizado if dia_base >= ultimo_dia_mes else realizado / dia_base * ultimo_dia_mes
         linhas.append({'mes': mes_br(mes), 'realizado': realizado, 'projetado': projetado})
+
     return {'erro': None, 'linhas': linhas[::-1], 'data_max': data_max, 'empresa': empresa or 'Geral'}
 
 
-def construir_volumetria_corte_fatura(df: pd.DataFrame, empresa: str | None = None) -> dict:
+def construir_volumetria_corte_fatura(df: pd.DataFrame, empresa: str | None = 'Geral') -> dict:
+    if 'Mes_Corte_Fatura' not in df.columns or df['Mes_Corte_Fatura'].dropna().empty:
+        return {'erro': 'Não encontrei dados de corte de fatura. Verifique se a aba/arquivo auxiliar de corte está junto ao XLSB.'}
+
     base = df[df['Mes_Corte_Fatura'].notna()].copy()
     if empresa and empresa != 'Geral' and 'Empresa' in base.columns:
         empresa_norm = normalizar_chave_texto(empresa)
         base = base[base['Empresa'].astype(str).map(normalizar_chave_texto) == empresa_norm].copy()
     if base.empty:
         return {'erro': 'Não há dados para a seleção realizada.'}
-    ordem = base[['Mes_Corte_Fatura','Mes_Corte_Fatura_Ordem']].drop_duplicates().copy()
+
+    ordem = base[['Mes_Corte_Fatura', 'Mes_Corte_Fatura_Ordem']].drop_duplicates().copy()
     ordem['ordem_aux'] = pd.to_numeric(ordem['Mes_Corte_Fatura_Ordem'], errors='coerce')
-    meses = ordem.sort_values('ordem_aux')['Mes_Corte_Fatura'].tolist()[-6:] if ordem['ordem_aux'].notna().any() else sorted(base['Mes_Corte_Fatura'].dropna().unique(), key=lambda x: datetime.strptime(x, '%m/%Y'))[-6:]
+    if ordem['ordem_aux'].notna().any():
+        meses = ordem.sort_values('ordem_aux')['Mes_Corte_Fatura'].tolist()[-6:]
+    else:
+        meses = sorted(base['Mes_Corte_Fatura'].dropna().unique(), key=lambda x: datetime.strptime(x, '%m/%Y'))[-6:]
+
     mes_atual = meses[-1] if meses else None
-    linhas, data_max_ref = [], pd.NaT
+    linhas = []
+    data_max_ref = pd.NaT
     for mes in meses:
         base_mes = base[base['Mes_Corte_Fatura'] == mes]
-        realizado = contar_pedidos(base_mes)
+        realizado = contar_volume_pedidos(base_mes)
         projetado = None
         if mes == mes_atual:
-            data_max = base_mes['Data NF'].max()
-            data_ini = base_mes['Data_Inicio_Corte_Mapa'].dropna().min()
-            data_fim = base_mes['Data_Fim_Corte_Mapa'].dropna().max()
+            data_max = base_mes['Data NF'].max() if 'Data NF' in base_mes.columns else pd.NaT
+            data_ini = base_mes['Data_Inicio_Corte_Mapa'].dropna().min() if 'Data_Inicio_Corte_Mapa' in base_mes.columns else pd.NaT
+            data_fim = base_mes['Data_Fim_Corte_Mapa'].dropna().max() if 'Data_Fim_Corte_Mapa' in base_mes.columns else pd.NaT
             data_max_ref = data_max
             if pd.notna(data_max) and pd.notna(data_ini) and pd.notna(data_fim):
-                total_dias = max((data_fim - data_ini).days + 1, 1)
-                dias_real = max((min(data_max, data_fim) - data_ini).days + 1, 1)
-                projetado = realizado if data_max >= data_fim else realizado / dias_real * total_dias
+                total_dias_corte = max((data_fim - data_ini).days + 1, 1)
+                dias_realizados = max((min(data_max, data_fim) - data_ini).days + 1, 1)
+                projetado = realizado if data_max >= data_fim else realizado / dias_realizados * total_dias_corte
         linhas.append({'mes': mes_br(mes), 'realizado': realizado, 'projetado': projetado})
+
     return {'erro': None, 'linhas': linhas[::-1], 'data_max': data_max_ref, 'empresa': empresa or 'Geral'}
 
 
@@ -423,9 +474,14 @@ def render_volumetria_resultado(resultado: dict, titulo_data: str):
         f'<span class="vol-mes notranslate" translate="no">{linha["mes"]}</span>'
         f'<span class="vol-realizado notranslate" translate="no">{fmt_int(linha["realizado"])}</span>'
         f'<span class="{("vol-projetado" if linha["projetado"] is not None else "vol-muted")} notranslate" translate="no">{fmt_int(linha["projetado"]) if linha["projetado"] is not None else "-"}</span>'
-        '</div>' for linha in resultado['linhas']])
+        '</div>'
+        for linha in resultado['linhas']
+    ])
     data_max = resultado.get('data_max')
-    nota = f"Projeção calculada com base no realizado até {data_max.strftime('%d/%m/%Y')} dentro do mês atual da base." if pd.notna(data_max) else ''
+    nota = ''
+    if pd.notna(data_max):
+        nota = f"Projeção calculada com base no realizado até {data_max.strftime('%d/%m/%Y')} dentro do mês atual da base."
+
     html = (
         '<div class="month-list-box">'
         '<div class="month-list-title">Volumetria de Pedidos</div>'
@@ -433,21 +489,22 @@ def render_volumetria_resultado(resultado: dict, titulo_data: str):
         f'<div class="month-highlight notranslate" translate="no">{resultado["empresa"]}</div>'
         '<div class="vol-table-card">'
         '<div class="vol-header"><span>Mês</span><span style="text-align:right;">Realizado</span><span style="text-align:right;">Projetado</span></div>'
-        f'{linhas_html}</div><div class="vol-note">{nota}</div></div>'
+        f'{linhas_html}'
+        '</div>'
+        f'<div class="vol-note">{nota}</div>'
+        '</div>'
     )
     st.markdown(html, unsafe_allow_html=True)
 
 
 def render_volumetria_pedidos(df: pd.DataFrame, tipo_data: str, empresa: str | None = 'Geral'):
     if tipo_data == 'nf':
-        resultado = construir_volumetria_pedidos(df, 'Data NF', empresa)
+        resultado = construir_volumetria_data_nf(df, empresa)
         titulo_data = 'Data da NF'
     else:
-        if 'Mes_Corte_Fatura' not in df.columns or df['Mes_Corte_Fatura'].dropna().empty:
-            st.warning("Não encontrei o mapa de Data Corte da Fatura na base. Verifique se a aba/arquivo auxiliar de corte está junto ao XLSB, conforme usado no dashboard_bi.")
-            return
         resultado = construir_volumetria_corte_fatura(df, empresa)
         titulo_data = 'Data Corte da Fatura'
+
     if resultado.get('erro'):
         st.warning(resultado['erro'])
         return
@@ -744,6 +801,7 @@ elif st.session_state.step == 2 and st.session_state.indicador == 'sf':
                 st.session_state.sf_vol_tipo_data = 'corte'
                 st.session_state.sf_vol_empresa = 'Geral'
                 st.rerun()
+
             if st.session_state.sf_vol_tipo_data:
                 st.markdown('<div class="menu-info"><strong>Empresa:</strong><br>Geral | Claro Fixo | Claro Móvel | Claro TV | Embratel | NET</div>', unsafe_allow_html=True)
                 empresas = ['Geral', 'Claro Fixo', 'Claro Móvel', 'Claro TV', 'Embratel', 'NET']
