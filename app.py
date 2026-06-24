@@ -7,6 +7,30 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+
+
+
+def registrar_log(nome_usuario, indicador):
+    arquivo = "log_torre_acessos.xlsx"
+
+    novo = pd.DataFrame([{
+        "Usuario": nome_usuario,
+        "Data": datetime.now(),
+        "Indicador": indicador
+    }])
+
+    if os.path.exists(arquivo):
+        base = pd.read_excel(arquivo)
+        base = pd.concat([base, novo], ignore_index=True)
+    else:
+        base = novo
+
+    base.to_excel(arquivo, index=False)
+
+
+
+
+
 st.set_page_config(page_title="Portal Torre Logística", layout="centered")
 
 ARQUIVO_BASE = "Faturamento SLA 2026.xlsb"
@@ -698,6 +722,48 @@ def render_visao_geral_meses(linhas: list):
     st.markdown(html, unsafe_allow_html=True)
 
 
+
+def dashboard_acessos():
+    st.markdown("## 📊 Dashboard de Acessos - Torre de Controle")
+
+    arquivo = "log_torre_acessos.xlsx"
+
+    if not os.path.exists(arquivo):
+        st.warning("Ainda não há registros de acessos.")
+        return
+
+    df = pd.read_excel(arquivo)
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+
+    # KPIs
+    total_acessos = len(df)
+    usuarios_unicos = df["Usuario"].nunique()
+
+    c1, c2 = st.columns(2)
+    c1.metric("Total de acessos", total_acessos)
+    c2.metric("Usuários únicos", usuarios_unicos)
+
+    # Ranking indicadores
+    st.markdown("### 📌 Indicadores mais acessados")
+    ranking_indicadores = df["Indicador"].value_counts().reset_index()
+    ranking_indicadores.columns = ["Indicador", "Qtd Acessos"]
+    st.dataframe(ranking_indicadores, use_container_width=True)
+
+    # Ranking usuários
+    st.markdown("### 👤 Usuários mais ativos")
+    ranking_usuarios = df["Usuario"].value_counts().reset_index()
+    ranking_usuarios.columns = ["Usuario", "Qtd Acessos"]
+    st.dataframe(ranking_usuarios, use_container_width=True)
+
+    # Últimos acessos
+    st.markdown("### 🕒 Últimos acessos")
+    df = df.sort_values(by="Data", ascending=False)
+    df["Data"] = df["Data"].dt.strftime("%d/%m/%Y %H:%M")
+    st.dataframe(df, use_container_width=True)
+
+
+
+
 if 'step' not in st.session_state:
     st.session_state.step = 0
 if 'nome' not in st.session_state:
@@ -745,22 +811,44 @@ if st.session_state.step == 0:
 elif st.session_state.step == 1:
     st.success(f"Prazer, {st.session_state.nome}!")
     st.markdown('<div class="menu-info"><strong>Opções disponíveis:</strong><br>Separação e Faturamento | Pedidos para LPs | Resultado do DRE | Valores dos EAs</div>', unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
+    
+    if c5.button('Dashboard de Acessos', use_container_width=True):
+    st.session_state.indicador = 'dashboard'
+    st.session_state.step = 2
+    st.rerun()
+
+    
     if c1.button('Separação e Faturamento', use_container_width=True):
+    registrar_log(st.session_state.nome, "Separação e Faturamento")
+
         st.session_state.indicador = 'sf'
         st.session_state.sf_visao = None
         st.session_state.sf_vol_tipo_data = None
         st.session_state.sf_vol_empresa = 'Geral'
         st.session_state.step = 2
         st.rerun()
-    if c2.button('Pedidos para LPs', use_container_width=True):
+    
+   if c2.button('Pedidos para LPs', use_container_width=True):
+    registrar_log(st.session_state.nome, "Pedidos para LPs")
+
         st.warning('No momento o fluxo de Pedidos para LPs está em construção.')
-    if c3.button('Resultado do DRE', use_container_width=True):
+    
+   if c3.button('Resultado do DRE', use_container_width=True):
+    registrar_log(st.session_state.nome, "Resultado do DRE")
+
         st.warning('No momento o fluxo de Resultado do DRE está em construção.')
-    if c4.button('Valores dos EAs', use_container_width=True):
+    
+if c4.button('Valores dos EAs', use_container_width=True):
+    registrar_log(st.session_state.nome, "Valores dos EAs")
+
         st.warning('No momento o fluxo de Valores dos EAs está em construção.')
 
 elif st.session_state.step == 2 and st.session_state.indicador == 'sf':
+    
+elif st.session_state.indicador == 'dashboard':
+    dashboard_acessos()
+
     st.markdown('<div class="menu-info"><strong>Opções disponíveis:</strong><br>Visão Geral | Visão por CDs | Visão por Empresas | Volumetria de Pedidos</div>', unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     if c1.button('Visão Geral', use_container_width=True):
