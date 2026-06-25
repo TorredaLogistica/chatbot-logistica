@@ -1,5 +1,8 @@
 import os
 import re
+import io
+import base64
+import hashlib
 import calendar
 import unicodedata
 from pathlib import Path
@@ -702,28 +705,68 @@ def render_visao_geral_meses(linhas: list):
 # =========================================================
 # LOG DE ACESSOS + DASHBOARD DE ACESSOS
 # =========================================================
-# IMPORTANTE:
-# - O histórico principal agora é gravado em CSV por append.
-# - Isso evita perder registros antigos por erro de leitura/escrita do Excel.
-# - O Excel fica apenas como exportação/backup para download.
-# - Em hospedagens como Streamlit Cloud, arquivos gravados localmente podem ser apagados
-#   quando o app reinicia/reimplanta. Para histórico definitivo, use uma base externa
-#   como SharePoint, OneDrive, Google Sheets, banco SQL ou GitHub com token.
+# Correções desta versão:
+# 1) Evita duplicidade de registros, usando apenas uma fonte principal de histórico.
+# 2) Usa ID único por registro.
+# 3) Permite log permanente no GitHub quando as secrets estiverem configuradas.
+# 4) Mantém fallback local em CSV/Excel.
+# 5) Inclui botão administrativo para apagar todos os registros com usuário/senha.
 
 LOG_ACESSOS_CSV = "log_torre_acessos_historico.csv"
 LOG_ACESSOS_XLSX = "log_torre_acessos.xlsx"
-# Mantém compatibilidade com o nome usado no código anterior
-LOG_ACESSOS = LOG_ACESSOS_XLSX
+LOG_ACESSOS = LOG_ACESSOS_XLSX  # compatibilidade com versões anteriores
 FUSO_HORARIO_LOG = "America/Sao_Paulo"
-COLUNAS_LOG = ["Usuario", "Data", "Indicador acessado", "Detalhe"]
+COLUNAS_LOG = ["ID", "Usuario", "Data", "Indicador acessado", "Detalhe"]
+COLUNAS_EXIBICAO_LOG = ["Usuario", "Data", "Indicador acessado", "Detalhe"]
+
+# Credenciais administrativas para limpeza do histórico no dashboard.
+ADMIN_LOG_USUARIO = "admin"
+ADMIN_LOG_SENHA = "admin"
+
+
+def _get_config(nome: str, padrao: str = "") -> str:
+    """Busca configuração primeiro em st.secrets e depois em variável de ambiente."""
+    try:
+        valor = st.secrets.get(nome, "")
+        if valor:
+            return str(valor)
+    except Exception:
+        pass
+    return str(os.getenv(nome, padrao) or padrao)
+
+
+def github_configurado() -> bool:
+    """Verifica se o log permanente no GitHub está configurado."""
+    return bool(_get_config("GITHUB_TOKEN") and _get_config("GITHUB_REPO"))
+
+
+def _github_info() -> dict:
+    return {
+        "token": _get_config("GITHUB_TOKEN"),
+        "repo": _get_config("GITHUB_REPO"),
+        "branch": _get_config("GITHUB_BRANCH", "main"),
+        "path": _get_config("GITHUB_LOG_PATH", LOG_ACESSOS_CSV),
+    }
+
+
+def _gerar_id_log(usuario: str, data, indicador: str, detalhe: str) -> str:
+    """Gera um ID estável para evitar duplicidade de registros antigos/legados."""
+    try:
+        data_txt = pd.to_datetime(data, errors="coerce").strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        data_txt = str(data)
+    chave = f"{usuario}|{data_txt}|{indicador}|{detalhe}"
+    return hashlib.sha256(chave.encode("utf-8")).hexdigest()[:16]
 
 
 def _normalizar_df_log(df_log: pd.DataFrame) -> pd.DataFrame:
-    """Padroniza o dataframe de log e remove linhas totalmente vazias."""
+    """Padroniza o histórico, cria ID quando não existir e remove duplicidades."""
     if df_log is None or df_log.empty:
         return pd.DataFrame(columns=COLUNAS_LOG)
 
     df_log = df_log.copy()
+
+    # Compatibilidade com versões antigas que não tinham a coluna ID.
     for col in COLUNAS_LOG:
         if col not in df_log.columns:
             df_log[col] = "" if col != "Data" else pd.NaT
@@ -734,98 +777,239 @@ def _normalizar_df_log(df_log: pd.DataFrame) -> pd.DataFrame:
     df_log["Detalhe"] = df_log["Detalhe"].fillna("").astype(str).str.strip()
     df_log["Data"] = pd.to_datetime(df_log["Data"], errors="coerce", dayfirst=True)
     df_log = df_log.dropna(subset=["Data"]).copy()
+
+    if df_log.empty:
+        return pd.DataFrame(columns=COLUNAS_LOG)
+
+    # Trunca microssegundos para impedir que o mesmo registro vire linhas diferentes.
+    df_log["Data"] = df_log["Data"].dt.floor("s")
+
+    mask_id_vazio = df_log["ID"].fillna("").astype(str).str.strip().eq("")
+    if mask_id_vazio.any():
+        df_log.loc[mask_id_vazio, "ID"] = df_log.loc[mask_id_vazio].apply(
+            lambda r: _gerar_id_log(r["Usuario"], r["Data"], r["Indicador acessado"], r["Detalhe"]),
+            axis=1
+        )
+
+    # Remove duplicidade por ID e também por conteúdo principal.
+    df_log = df_log.drop_duplicates(subset=["ID"], keep="first")
+    df_log = df_log.drop_duplicates(subset=COLUNAS_EXIBICAO_LOG, keep="first")
+    df_log = df_log.sort_values("Data", ascending=True).reset_index(drop=True)
     return df_log
 
 
-def _sincronizar_log_legado() -> pd.DataFrame:
-    """Une o log antigo em Excel com o novo CSV, sem duplicar registros."""
-    bases = []
-
+def _ler_log_local() -> pd.DataFrame:
+    """Lê histórico local. Prioriza CSV e usa Excel antigo apenas para migração inicial."""
     if os.path.exists(LOG_ACESSOS_CSV):
         try:
-            bases.append(pd.read_csv(LOG_ACESSOS_CSV, sep=";", encoding="utf-8-sig"))
+            return _normalizar_df_log(pd.read_csv(LOG_ACESSOS_CSV, sep=";", encoding="utf-8-sig"))
         except Exception:
             pass
 
-    # Carrega o Excel antigo, se existir, para não perder o histórico já registrado.
+    # Migração do Excel antigo somente se o CSV ainda não existir.
     if os.path.exists(LOG_ACESSOS_XLSX):
         try:
-            bases.append(pd.read_excel(LOG_ACESSOS_XLSX, engine="openpyxl"))
+            return _normalizar_df_log(pd.read_excel(LOG_ACESSOS_XLSX, engine="openpyxl"))
         except Exception:
             pass
 
-    if not bases:
-        return pd.DataFrame(columns=COLUNAS_LOG)
-
-    df_total = pd.concat(bases, ignore_index=True)
-    df_total = _normalizar_df_log(df_total)
-
-    # Remove duplicidades exatas causadas por sincronização entre Excel e CSV.
-    if not df_total.empty:
-        df_total = df_total.drop_duplicates(subset=COLUNAS_LOG, keep="first")
-        df_total = df_total.sort_values("Data", ascending=True).reset_index(drop=True)
-
-    return df_total
+    return pd.DataFrame(columns=COLUNAS_LOG)
 
 
-def salvar_log_completo(df_log: pd.DataFrame):
-    """Salva o histórico consolidado em CSV e gera Excel atualizado para download."""
+def _df_para_csv_bytes(df_log: pd.DataFrame) -> bytes:
+    """Converte o log em CSV padronizado para salvar local/GitHub."""
     df_log = _normalizar_df_log(df_log)
-
-    # CSV histórico: mais estável para append/leitura no app.
     df_csv = df_log.copy()
     if not df_csv.empty:
         df_csv["Data"] = df_csv["Data"].dt.strftime("%Y-%m-%d %H:%M:%S")
-    df_csv.to_csv(LOG_ACESSOS_CSV, index=False, sep=";", encoding="utf-8-sig")
+    return df_csv.to_csv(index=False, sep=";", encoding="utf-8-sig").encode("utf-8-sig")
 
-    # Excel atualizado apenas como espelho/exportação.
+
+def _csv_bytes_para_df(conteudo: bytes) -> pd.DataFrame:
+    if not conteudo:
+        return pd.DataFrame(columns=COLUNAS_LOG)
+    try:
+        return _normalizar_df_log(pd.read_csv(io.BytesIO(conteudo), sep=";", encoding="utf-8-sig"))
+    except Exception:
+        return pd.DataFrame(columns=COLUNAS_LOG)
+
+
+def _github_ler_arquivo() -> tuple[pd.DataFrame, str | None]:
+    """Lê o arquivo de log no GitHub. Retorna dataframe e SHA atual."""
+    if not github_configurado():
+        return pd.DataFrame(columns=COLUNAS_LOG), None
+
+    try:
+        import requests
+        cfg = _github_info()
+        url = f"https://api.github.com/repos/{cfg['repo']}/contents/{cfg['path']}"
+        headers = {
+            "Authorization": f"Bearer {cfg['token']}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        resp = requests.get(url, headers=headers, params={"ref": cfg["branch"]}, timeout=15)
+
+        if resp.status_code == 404:
+            return pd.DataFrame(columns=COLUNAS_LOG), None
+
+        resp.raise_for_status()
+        dados = resp.json()
+        conteudo = base64.b64decode(dados.get("content", ""))
+        sha = dados.get("sha")
+        return _csv_bytes_para_df(conteudo), sha
+    except Exception:
+        return pd.DataFrame(columns=COLUNAS_LOG), None
+
+
+def _github_salvar_arquivo(df_log: pd.DataFrame, mensagem: str = "Atualiza log de acessos da Torre") -> bool:
+    """Salva o histórico no GitHub usando Contents API."""
+    if not github_configurado():
+        return False
+
+    try:
+        import requests
+        cfg = _github_info()
+        url = f"https://api.github.com/repos/{cfg['repo']}/contents/{cfg['path']}"
+        headers = {
+            "Authorization": f"Bearer {cfg['token']}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+
+        # Sempre lê o SHA mais recente antes de gravar para reduzir conflito.
+        _, sha_atual = _github_ler_arquivo()
+        conteudo_b64 = base64.b64encode(_df_para_csv_bytes(df_log)).decode("utf-8")
+        payload = {
+            "message": mensagem,
+            "content": conteudo_b64,
+            "branch": cfg["branch"],
+        }
+        if sha_atual:
+            payload["sha"] = sha_atual
+
+        resp = requests.put(url, headers=headers, json=payload, timeout=20)
+
+        # Se houve conflito por atualização simultânea, tenta mais uma vez consolidando.
+        if resp.status_code == 409:
+            df_remoto, sha_novo = _github_ler_arquivo()
+            df_final = _normalizar_df_log(pd.concat([df_remoto, df_log], ignore_index=True))
+            payload["content"] = base64.b64encode(_df_para_csv_bytes(df_final)).decode("utf-8")
+            if sha_novo:
+                payload["sha"] = sha_novo
+            resp = requests.put(url, headers=headers, json=payload, timeout=20)
+
+        resp.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
+def salvar_log_local(df_log: pd.DataFrame):
+    """Salva cópia local em CSV e Excel para backup/download."""
+    df_log = _normalizar_df_log(df_log)
+
+    # CSV local como backup.
+    Path(LOG_ACESSOS_CSV).write_bytes(_df_para_csv_bytes(df_log))
+
+    # Excel local como espelho para download.
     try:
         df_xlsx = df_log.copy()
         df_xlsx.to_excel(LOG_ACESSOS_XLSX, index=False, engine="openpyxl")
     except Exception:
-        # Se o Excel estiver temporariamente bloqueado, o CSV histórico continua salvo.
         pass
 
 
+def carregar_log_acessos() -> pd.DataFrame:
+    """Carrega o histórico. Se GitHub estiver configurado, ele vira a fonte principal."""
+    if github_configurado():
+        df_github, _sha = _github_ler_arquivo()
+        if not df_github.empty:
+            salvar_log_local(df_github)
+            return df_github
+
+        # Se o arquivo no GitHub ainda não existe, migra o histórico local para lá.
+        df_local = _ler_log_local()
+        if not df_local.empty:
+            _github_salvar_arquivo(df_local, "Migra histórico inicial de acessos da Torre")
+            salvar_log_local(df_local)
+            return df_local
+
+        return pd.DataFrame(columns=COLUNAS_LOG)
+
+    return _ler_log_local()
+
+
+def salvar_log_completo(df_log: pd.DataFrame, mensagem_github: str = "Atualiza log de acessos da Torre"):
+    """Salva o histórico na fonte principal e mantém backup local."""
+    df_log = _normalizar_df_log(df_log)
+    salvar_log_local(df_log)
+    if github_configurado():
+        _github_salvar_arquivo(df_log, mensagem_github)
+
+
 def registrar_log(nome_usuario: str, indicador: str, detalhe: str = ""):
-    """Registra cada acesso/click usando horário de São Paulo e preservando histórico."""
+    """Registra cada acesso/click usando horário de São Paulo, sem duplicar no rerun."""
     try:
         nome_usuario = (nome_usuario or "Usuário").strip() or "Usuário"
         indicador = (indicador or "Não informado").strip() or "Não informado"
         detalhe = (detalhe or "").strip()
+        data_hora_sp = datetime.now(ZoneInfo(FUSO_HORARIO_LOG)).replace(tzinfo=None).replace(microsecond=0)
 
-        data_hora_sp = datetime.now(ZoneInfo(FUSO_HORARIO_LOG)).replace(tzinfo=None)
+        # Proteção contra duplicidade do próprio Streamlit/rerun no mesmo clique.
+        chave_evento = f"{nome_usuario}|{indicador}|{detalhe}"
+        ultimo = st.session_state.get("_ultimo_log_evento", {})
+        if ultimo.get("chave") == chave_evento:
+            try:
+                segundos = (data_hora_sp - ultimo.get("data")).total_seconds()
+                if 0 <= segundos <= 3:
+                    return
+            except Exception:
+                pass
+
         novo = pd.DataFrame([{
+            "ID": _gerar_id_log(nome_usuario, data_hora_sp, indicador, detalhe),
             "Usuario": nome_usuario,
             "Data": data_hora_sp,
             "Indicador acessado": indicador,
-            "Detalhe": detalhe
+            "Detalhe": detalhe,
         }])
 
-        base = _sincronizar_log_legado()
+        base = carregar_log_acessos()
         base = pd.concat([base, novo], ignore_index=True)
-        salvar_log_completo(base)
+        base = _normalizar_df_log(base)
+        salvar_log_completo(base, "Registra acesso na Torre de Controle")
+
+        st.session_state["_ultimo_log_evento"] = {"chave": chave_evento, "data": data_hora_sp}
 
     except Exception as e:
         st.toast(f"Não foi possível registrar o log: {e}", icon="⚠️")
 
 
-def carregar_log_acessos() -> pd.DataFrame:
-    """Carrega todo o histórico de acessos consolidando CSV e Excel legado."""
+def apagar_todos_logs() -> bool:
+    """Apaga todos os registros, mantendo apenas o cabeçalho do arquivo."""
     try:
-        df_log = _sincronizar_log_legado()
-        return _normalizar_df_log(df_log)
+        vazio = pd.DataFrame(columns=COLUNAS_LOG)
+        salvar_log_completo(vazio, "Apaga histórico de acessos da Torre")
+        st.session_state["_ultimo_log_evento"] = {}
+        return True
     except Exception:
-        return pd.DataFrame(columns=COLUNAS_LOG)
+        return False
 
 
 def dashboard_acessos():
     """Exibe o dashboard de acessos dentro do próprio app."""
     st.markdown("## 📊 Dashboard de Acessos - Torre de Controle")
 
+    fonte_log = "GitHub" if github_configurado() else "arquivo local do app"
+    st.caption(f"Fonte do histórico: {fonte_log}")
+
     df_log = carregar_log_acessos()
     if df_log.empty:
         st.warning("Ainda não há registros de acessos.")
+
+        with st.expander("🛡️ Administração do log"):
+            st.info("Não há registros para apagar.")
         return
 
     df_log = df_log.dropna(subset=["Data"]).copy()
@@ -833,72 +1017,83 @@ def dashboard_acessos():
         st.warning("O arquivo de log existe, mas ainda não possui datas válidas.")
         return
 
-    # Período padrão: mostra TODO o histórico encontrado, não somente o dia atual.
+    # Período padrão: mostra TODO o histórico disponível, não somente hoje.
     data_min = df_log["Data"].min().date()
     data_max = df_log["Data"].max().date()
 
     st.markdown("### 🔎 Filtros")
     col_f1, col_f2 = st.columns(2)
-    data_inicio = col_f1.date_input("Data início", value=data_min, min_value=data_min, max_value=data_max, format="DD/MM/YYYY")
-    data_fim = col_f2.date_input("Data fim", value=data_max, min_value=data_min, max_value=data_max, format="DD/MM/YYYY")
+    data_inicio = col_f1.date_input(
+        "Data início",
+        value=data_min,
+        min_value=data_min,
+        max_value=data_max,
+        format="DD/MM/YYYY",
+        key="log_data_inicio"
+    )
+    data_fim = col_f2.date_input(
+        "Data fim",
+        value=data_max,
+        min_value=data_min,
+        max_value=data_max,
+        format="DD/MM/YYYY",
+        key="log_data_fim"
+    )
 
     inicio = pd.to_datetime(data_inicio)
     fim = pd.to_datetime(data_fim) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
-
     df_filtrado = df_log[(df_log["Data"] >= inicio) & (df_log["Data"] <= fim)].copy()
 
     if df_filtrado.empty:
         st.info("Não há acessos registrados para o período selecionado.")
-        return
+    else:
+        total_acessos = len(df_filtrado)
+        usuarios_unicos = df_filtrado["Usuario"].nunique()
+        indicadores_unicos = df_filtrado["Indicador acessado"].nunique()
 
-    total_acessos = len(df_filtrado)
-    usuarios_unicos = df_filtrado["Usuario"].nunique()
-    indicadores_unicos = df_filtrado["Indicador acessado"].nunique()
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total de acessos", f"{total_acessos:,}".replace(",", "."))
+        c2.metric("Usuários únicos", f"{usuarios_unicos:,}".replace(",", "."))
+        c3.metric("Indicadores acessados", f"{indicadores_unicos:,}".replace(",", "."))
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total de acessos", f"{total_acessos:,}".replace(",", "."))
-    c2.metric("Usuários únicos", f"{usuarios_unicos:,}".replace(",", "."))
-    c3.metric("Indicadores acessados", f"{indicadores_unicos:,}".replace(",", "."))
+        st.caption(f"Histórico carregado de {data_min.strftime('%d/%m/%Y')} até {data_max.strftime('%d/%m/%Y')}.")
 
-    st.caption(
-        f"Histórico carregado de {data_min.strftime('%d/%m/%Y')} até {data_max.strftime('%d/%m/%Y')}. "
-        "Se o app estiver no Streamlit Cloud e o servidor reiniciar, arquivos locais podem ser perdidos."
-    )
+        st.markdown("### 📌 Indicadores mais acessados")
+        ranking_indicadores = (
+            df_filtrado["Indicador acessado"]
+            .fillna("Não informado")
+            .value_counts()
+            .reset_index()
+        )
+        ranking_indicadores.columns = ["Indicador acessado", "Qtd Acessos"]
+        st.dataframe(ranking_indicadores, use_container_width=True, hide_index=True)
+        st.bar_chart(ranking_indicadores.set_index("Indicador acessado"))
 
-    st.markdown("### 📌 Indicadores mais acessados")
-    ranking_indicadores = (
-        df_filtrado["Indicador acessado"]
-        .fillna("Não informado")
-        .value_counts()
-        .reset_index()
-    )
-    ranking_indicadores.columns = ["Indicador acessado", "Qtd Acessos"]
-    st.dataframe(ranking_indicadores, use_container_width=True, hide_index=True)
-    st.bar_chart(ranking_indicadores.set_index("Indicador acessado"))
+        st.markdown("### 👤 Usuários mais ativos")
+        ranking_usuarios = (
+            df_filtrado["Usuario"]
+            .fillna("Usuário")
+            .value_counts()
+            .reset_index()
+        )
+        ranking_usuarios.columns = ["Usuario", "Qtd Acessos"]
+        st.dataframe(ranking_usuarios, use_container_width=True, hide_index=True)
 
-    st.markdown("### 👤 Usuários mais ativos")
-    ranking_usuarios = (
-        df_filtrado["Usuario"]
-        .fillna("Usuário")
-        .value_counts()
-        .reset_index()
-    )
-    ranking_usuarios.columns = ["Usuario", "Qtd Acessos"]
-    st.dataframe(ranking_usuarios, use_container_width=True, hide_index=True)
+        st.markdown("### 📅 Acessos por dia")
+        acessos_dia = df_filtrado.copy()
+        acessos_dia["Dia"] = acessos_dia["Data"].dt.date
+        acessos_dia = acessos_dia.groupby("Dia").size().reset_index(name="Qtd Acessos")
+        st.line_chart(acessos_dia.set_index("Dia"))
 
-    st.markdown("### 📅 Acessos por dia")
-    acessos_dia = df_filtrado.copy()
-    acessos_dia["Dia"] = acessos_dia["Data"].dt.date
-    acessos_dia = acessos_dia.groupby("Dia").size().reset_index(name="Qtd Acessos")
-    st.line_chart(acessos_dia.set_index("Dia"))
+        st.markdown("### 🕒 Últimos acessos")
+        ultimos = df_filtrado.sort_values("Data", ascending=False).copy()
+        ultimos_exibicao = ultimos[COLUNAS_EXIBICAO_LOG].copy()
+        ultimos_exibicao["Data"] = ultimos_exibicao["Data"].dt.strftime("%d/%m/%Y %H:%M:%S")
+        st.dataframe(ultimos_exibicao, use_container_width=True, hide_index=True)
 
-    st.markdown("### 🕒 Últimos acessos")
-    ultimos = df_filtrado.sort_values("Data", ascending=False).copy()
-    ultimos["Data"] = ultimos["Data"].dt.strftime("%d/%m/%Y %H:%M:%S")
-    st.dataframe(ultimos, use_container_width=True, hide_index=True)
-
-    # Botões de download atualizados com todo o histórico consolidado.
+    # Download sempre considerando o histórico completo.
     df_export = df_log.sort_values("Data", ascending=False).copy()
+    df_export = df_export[COLUNAS_EXIBICAO_LOG].copy()
     df_export["Data"] = df_export["Data"].dt.strftime("%d/%m/%Y %H:%M:%S")
 
     csv_download = df_export.to_csv(index=False, sep=";", encoding="utf-8-sig").encode("utf-8-sig")
@@ -919,6 +1114,23 @@ def dashboard_acessos():
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
+
+    st.markdown("---")
+    with st.expander("🛡️ Administração do log - apagar registros"):
+        st.warning("Atenção: esta ação apaga todos os registros de acessos do histórico.")
+        usuario_admin = st.text_input("Usuário administrador", key="usuario_admin_log")
+        senha_admin = st.text_input("Senha administrador", type="password", key="senha_admin_log")
+        confirmar = st.checkbox("Confirmo que desejo apagar todos os registros", key="confirmar_apagar_log")
+
+        if st.button("🗑️ Apagar todos os registros", use_container_width=True):
+            if usuario_admin == ADMIN_LOG_USUARIO and senha_admin == ADMIN_LOG_SENHA and confirmar:
+                if apagar_todos_logs():
+                    st.success("Registros apagados com sucesso.")
+                    st.rerun()
+                else:
+                    st.error("Não foi possível apagar os registros. Verifique a configuração do GitHub ou permissões do arquivo.")
+            else:
+                st.error("Usuário/senha inválidos ou confirmação não marcada.")
 
 if 'step' not in st.session_state:
     st.session_state.step = 0
