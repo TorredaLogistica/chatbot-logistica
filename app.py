@@ -702,19 +702,99 @@ def render_visao_geral_meses(linhas: list):
 # =========================================================
 # LOG DE ACESSOS + DASHBOARD DE ACESSOS
 # =========================================================
-LOG_ACESSOS = "log_torre_acessos.xlsx"
+# IMPORTANTE:
+# - O histórico principal agora é gravado em CSV por append.
+# - Isso evita perder registros antigos por erro de leitura/escrita do Excel.
+# - O Excel fica apenas como exportação/backup para download.
+# - Em hospedagens como Streamlit Cloud, arquivos gravados localmente podem ser apagados
+#   quando o app reinicia/reimplanta. Para histórico definitivo, use uma base externa
+#   como SharePoint, OneDrive, Google Sheets, banco SQL ou GitHub com token.
+
+LOG_ACESSOS_CSV = "log_torre_acessos_historico.csv"
+LOG_ACESSOS_XLSX = "log_torre_acessos.xlsx"
+# Mantém compatibilidade com o nome usado no código anterior
+LOG_ACESSOS = LOG_ACESSOS_XLSX
 FUSO_HORARIO_LOG = "America/Sao_Paulo"
+COLUNAS_LOG = ["Usuario", "Data", "Indicador acessado", "Detalhe"]
+
+
+def _normalizar_df_log(df_log: pd.DataFrame) -> pd.DataFrame:
+    """Padroniza o dataframe de log e remove linhas totalmente vazias."""
+    if df_log is None or df_log.empty:
+        return pd.DataFrame(columns=COLUNAS_LOG)
+
+    df_log = df_log.copy()
+    for col in COLUNAS_LOG:
+        if col not in df_log.columns:
+            df_log[col] = "" if col != "Data" else pd.NaT
+
+    df_log = df_log[COLUNAS_LOG].copy()
+    df_log["Usuario"] = df_log["Usuario"].fillna("Usuário").astype(str).str.strip().replace("", "Usuário")
+    df_log["Indicador acessado"] = df_log["Indicador acessado"].fillna("Não informado").astype(str).str.strip().replace("", "Não informado")
+    df_log["Detalhe"] = df_log["Detalhe"].fillna("").astype(str).str.strip()
+    df_log["Data"] = pd.to_datetime(df_log["Data"], errors="coerce", dayfirst=True)
+    df_log = df_log.dropna(subset=["Data"]).copy()
+    return df_log
+
+
+def _sincronizar_log_legado() -> pd.DataFrame:
+    """Une o log antigo em Excel com o novo CSV, sem duplicar registros."""
+    bases = []
+
+    if os.path.exists(LOG_ACESSOS_CSV):
+        try:
+            bases.append(pd.read_csv(LOG_ACESSOS_CSV, sep=";", encoding="utf-8-sig"))
+        except Exception:
+            pass
+
+    # Carrega o Excel antigo, se existir, para não perder o histórico já registrado.
+    if os.path.exists(LOG_ACESSOS_XLSX):
+        try:
+            bases.append(pd.read_excel(LOG_ACESSOS_XLSX, engine="openpyxl"))
+        except Exception:
+            pass
+
+    if not bases:
+        return pd.DataFrame(columns=COLUNAS_LOG)
+
+    df_total = pd.concat(bases, ignore_index=True)
+    df_total = _normalizar_df_log(df_total)
+
+    # Remove duplicidades exatas causadas por sincronização entre Excel e CSV.
+    if not df_total.empty:
+        df_total = df_total.drop_duplicates(subset=COLUNAS_LOG, keep="first")
+        df_total = df_total.sort_values("Data", ascending=True).reset_index(drop=True)
+
+    return df_total
+
+
+def salvar_log_completo(df_log: pd.DataFrame):
+    """Salva o histórico consolidado em CSV e gera Excel atualizado para download."""
+    df_log = _normalizar_df_log(df_log)
+
+    # CSV histórico: mais estável para append/leitura no app.
+    df_csv = df_log.copy()
+    if not df_csv.empty:
+        df_csv["Data"] = df_csv["Data"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    df_csv.to_csv(LOG_ACESSOS_CSV, index=False, sep=";", encoding="utf-8-sig")
+
+    # Excel atualizado apenas como espelho/exportação.
+    try:
+        df_xlsx = df_log.copy()
+        df_xlsx.to_excel(LOG_ACESSOS_XLSX, index=False, engine="openpyxl")
+    except Exception:
+        # Se o Excel estiver temporariamente bloqueado, o CSV histórico continua salvo.
+        pass
 
 
 def registrar_log(nome_usuario: str, indicador: str, detalhe: str = ""):
-    """Registra no Excel cada acesso/click realizado dentro da Torre usando horário de São Paulo."""
+    """Registra cada acesso/click usando horário de São Paulo e preservando histórico."""
     try:
-        nome_usuario = (nome_usuario or "Usuário").strip()
-        indicador = (indicador or "Não informado").strip()
+        nome_usuario = (nome_usuario or "Usuário").strip() or "Usuário"
+        indicador = (indicador or "Não informado").strip() or "Não informado"
         detalhe = (detalhe or "").strip()
 
         data_hora_sp = datetime.now(ZoneInfo(FUSO_HORARIO_LOG)).replace(tzinfo=None)
-
         novo = pd.DataFrame([{
             "Usuario": nome_usuario,
             "Data": data_hora_sp,
@@ -722,39 +802,21 @@ def registrar_log(nome_usuario: str, indicador: str, detalhe: str = ""):
             "Detalhe": detalhe
         }])
 
-        if os.path.exists(LOG_ACESSOS):
-            try:
-                base = pd.read_excel(LOG_ACESSOS, engine="openpyxl")
-            except Exception:
-                base = pd.DataFrame(columns=["Usuario", "Data", "Indicador acessado", "Detalhe"])
-            base = pd.concat([base, novo], ignore_index=True)
-        else:
-            base = novo
+        base = _sincronizar_log_legado()
+        base = pd.concat([base, novo], ignore_index=True)
+        salvar_log_completo(base)
 
-        base.to_excel(LOG_ACESSOS, index=False, engine="openpyxl")
     except Exception as e:
         st.toast(f"Não foi possível registrar o log: {e}", icon="⚠️")
 
 
 def carregar_log_acessos() -> pd.DataFrame:
-    """Carrega o arquivo de log, padronizando as colunas esperadas."""
-    colunas = ["Usuario", "Data", "Indicador acessado", "Detalhe"]
-
-    if not os.path.exists(LOG_ACESSOS):
-        return pd.DataFrame(columns=colunas)
-
+    """Carrega todo o histórico de acessos consolidando CSV e Excel legado."""
     try:
-        df_log = pd.read_excel(LOG_ACESSOS, engine="openpyxl")
+        df_log = _sincronizar_log_legado()
+        return _normalizar_df_log(df_log)
     except Exception:
-        return pd.DataFrame(columns=colunas)
-
-    for col in colunas:
-        if col not in df_log.columns:
-            df_log[col] = "" if col != "Data" else pd.NaT
-
-    df_log = df_log[colunas].copy()
-    df_log["Data"] = pd.to_datetime(df_log["Data"], errors="coerce")
-    return df_log
+        return pd.DataFrame(columns=COLUNAS_LOG)
 
 
 def dashboard_acessos():
@@ -762,7 +824,6 @@ def dashboard_acessos():
     st.markdown("## 📊 Dashboard de Acessos - Torre de Controle")
 
     df_log = carregar_log_acessos()
-
     if df_log.empty:
         st.warning("Ainda não há registros de acessos.")
         return
@@ -772,16 +833,18 @@ def dashboard_acessos():
         st.warning("O arquivo de log existe, mas ainda não possui datas válidas.")
         return
 
+    # Período padrão: mostra TODO o histórico encontrado, não somente o dia atual.
     data_min = df_log["Data"].min().date()
     data_max = df_log["Data"].max().date()
 
     st.markdown("### 🔎 Filtros")
     col_f1, col_f2 = st.columns(2)
-    data_inicio = col_f1.date_input("Data início", value=data_min, format="DD/MM/YYYY")
-    data_fim = col_f2.date_input("Data fim", value=data_max, format="DD/MM/YYYY")
+    data_inicio = col_f1.date_input("Data início", value=data_min, min_value=data_min, max_value=data_max, format="DD/MM/YYYY")
+    data_fim = col_f2.date_input("Data fim", value=data_max, min_value=data_min, max_value=data_max, format="DD/MM/YYYY")
 
     inicio = pd.to_datetime(data_inicio)
     fim = pd.to_datetime(data_fim) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+
     df_filtrado = df_log[(df_log["Data"] >= inicio) & (df_log["Data"] <= fim)].copy()
 
     if df_filtrado.empty:
@@ -796,6 +859,11 @@ def dashboard_acessos():
     c1.metric("Total de acessos", f"{total_acessos:,}".replace(",", "."))
     c2.metric("Usuários únicos", f"{usuarios_unicos:,}".replace(",", "."))
     c3.metric("Indicadores acessados", f"{indicadores_unicos:,}".replace(",", "."))
+
+    st.caption(
+        f"Histórico carregado de {data_min.strftime('%d/%m/%Y')} até {data_max.strftime('%d/%m/%Y')}. "
+        "Se o app estiver no Streamlit Cloud e o servidor reiniciar, arquivos locais podem ser perdidos."
+    )
 
     st.markdown("### 📌 Indicadores mais acessados")
     ranking_indicadores = (
@@ -829,16 +897,28 @@ def dashboard_acessos():
     ultimos["Data"] = ultimos["Data"].dt.strftime("%d/%m/%Y %H:%M:%S")
     st.dataframe(ultimos, use_container_width=True, hide_index=True)
 
-    if os.path.exists(LOG_ACESSOS):
-        with open(LOG_ACESSOS, "rb") as f:
+    # Botões de download atualizados com todo o histórico consolidado.
+    df_export = df_log.sort_values("Data", ascending=False).copy()
+    df_export["Data"] = df_export["Data"].dt.strftime("%d/%m/%Y %H:%M:%S")
+
+    csv_download = df_export.to_csv(index=False, sep=";", encoding="utf-8-sig").encode("utf-8-sig")
+    st.download_button(
+        label="⬇️ Baixar histórico em CSV",
+        data=csv_download,
+        file_name="log_torre_acessos_historico.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+
+    if os.path.exists(LOG_ACESSOS_XLSX):
+        with open(LOG_ACESSOS_XLSX, "rb") as f:
             st.download_button(
-                label="⬇️ Baixar log em Excel",
+                label="⬇️ Baixar histórico em Excel",
                 data=f,
                 file_name="log_torre_acessos.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
-
 
 if 'step' not in st.session_state:
     st.session_state.step = 0
