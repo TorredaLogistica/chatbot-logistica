@@ -705,27 +705,27 @@ def render_visao_geral_meses(linhas: list):
 # =========================================================
 # LOG DE ACESSOS + DASHBOARD DE ACESSOS
 # =========================================================
-# Correções desta versão:
-# 1) Evita duplicidade de registros, usando apenas uma fonte principal de histórico.
-# 2) Usa ID único por registro.
-# 3) Permite log permanente no GitHub quando as secrets estiverem configuradas.
-# 4) Mantém fallback local em CSV/Excel.
-# 5) Inclui botão administrativo para apagar todos os registros com usuário/senha.
+# Correções aplicadas:
+# - Evita duplicidade de registros.
+# - Usa ID único por registro.
+# - Permite log permanente no GitHub se as secrets estiverem configuradas.
+# - Mantém fallback local em CSV/Excel.
+# - Permite apagar registros mediante usuário/senha.
+# - O Dashboard de Acessos agora exige senha de entrada: admin.
 
 LOG_ACESSOS_CSV = "log_torre_acessos_historico.csv"
 LOG_ACESSOS_XLSX = "log_torre_acessos.xlsx"
-LOG_ACESSOS = LOG_ACESSOS_XLSX  # compatibilidade com versões anteriores
+LOG_ACESSOS = LOG_ACESSOS_XLSX
 FUSO_HORARIO_LOG = "America/Sao_Paulo"
 COLUNAS_LOG = ["ID", "Usuario", "Data", "Indicador acessado", "Detalhe"]
 COLUNAS_EXIBICAO_LOG = ["Usuario", "Data", "Indicador acessado", "Detalhe"]
 
-# Credenciais administrativas para limpeza do histórico no dashboard.
+SENHA_DASHBOARD_ACESSOS = "admin"
 ADMIN_LOG_USUARIO = "admin"
 ADMIN_LOG_SENHA = "admin"
 
 
 def _get_config(nome: str, padrao: str = "") -> str:
-    """Busca configuração primeiro em st.secrets e depois em variável de ambiente."""
     try:
         valor = st.secrets.get(nome, "")
         if valor:
@@ -736,7 +736,6 @@ def _get_config(nome: str, padrao: str = "") -> str:
 
 
 def github_configurado() -> bool:
-    """Verifica se o log permanente no GitHub está configurado."""
     return bool(_get_config("GITHUB_TOKEN") and _get_config("GITHUB_REPO"))
 
 
@@ -750,7 +749,6 @@ def _github_info() -> dict:
 
 
 def _gerar_id_log(usuario: str, data, indicador: str, detalhe: str) -> str:
-    """Gera um ID estável para evitar duplicidade de registros antigos/legados."""
     try:
         data_txt = pd.to_datetime(data, errors="coerce").strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
@@ -760,13 +758,10 @@ def _gerar_id_log(usuario: str, data, indicador: str, detalhe: str) -> str:
 
 
 def _normalizar_df_log(df_log: pd.DataFrame) -> pd.DataFrame:
-    """Padroniza o histórico, cria ID quando não existir e remove duplicidades."""
     if df_log is None or df_log.empty:
         return pd.DataFrame(columns=COLUNAS_LOG)
 
     df_log = df_log.copy()
-
-    # Compatibilidade com versões antigas que não tinham a coluna ID.
     for col in COLUNAS_LOG:
         if col not in df_log.columns:
             df_log[col] = "" if col != "Data" else pd.NaT
@@ -781,9 +776,7 @@ def _normalizar_df_log(df_log: pd.DataFrame) -> pd.DataFrame:
     if df_log.empty:
         return pd.DataFrame(columns=COLUNAS_LOG)
 
-    # Trunca microssegundos para impedir que o mesmo registro vire linhas diferentes.
     df_log["Data"] = df_log["Data"].dt.floor("s")
-
     mask_id_vazio = df_log["ID"].fillna("").astype(str).str.strip().eq("")
     if mask_id_vazio.any():
         df_log.loc[mask_id_vazio, "ID"] = df_log.loc[mask_id_vazio].apply(
@@ -791,7 +784,6 @@ def _normalizar_df_log(df_log: pd.DataFrame) -> pd.DataFrame:
             axis=1
         )
 
-    # Remove duplicidade por ID e também por conteúdo principal.
     df_log = df_log.drop_duplicates(subset=["ID"], keep="first")
     df_log = df_log.drop_duplicates(subset=COLUNAS_EXIBICAO_LOG, keep="first")
     df_log = df_log.sort_values("Data", ascending=True).reset_index(drop=True)
@@ -799,14 +791,13 @@ def _normalizar_df_log(df_log: pd.DataFrame) -> pd.DataFrame:
 
 
 def _ler_log_local() -> pd.DataFrame:
-    """Lê histórico local. Prioriza CSV e usa Excel antigo apenas para migração inicial."""
+    # Fonte principal local: CSV. O Excel antigo só entra como migração inicial.
     if os.path.exists(LOG_ACESSOS_CSV):
         try:
             return _normalizar_df_log(pd.read_csv(LOG_ACESSOS_CSV, sep=";", encoding="utf-8-sig"))
         except Exception:
             pass
 
-    # Migração do Excel antigo somente se o CSV ainda não existir.
     if os.path.exists(LOG_ACESSOS_XLSX):
         try:
             return _normalizar_df_log(pd.read_excel(LOG_ACESSOS_XLSX, engine="openpyxl"))
@@ -817,7 +808,6 @@ def _ler_log_local() -> pd.DataFrame:
 
 
 def _df_para_csv_bytes(df_log: pd.DataFrame) -> bytes:
-    """Converte o log em CSV padronizado para salvar local/GitHub."""
     df_log = _normalizar_df_log(df_log)
     df_csv = df_log.copy()
     if not df_csv.empty:
@@ -835,7 +825,6 @@ def _csv_bytes_para_df(conteudo: bytes) -> pd.DataFrame:
 
 
 def _github_ler_arquivo() -> tuple[pd.DataFrame, str | None]:
-    """Lê o arquivo de log no GitHub. Retorna dataframe e SHA atual."""
     if not github_configurado():
         return pd.DataFrame(columns=COLUNAS_LOG), None
 
@@ -849,10 +838,8 @@ def _github_ler_arquivo() -> tuple[pd.DataFrame, str | None]:
             "X-GitHub-Api-Version": "2022-11-28",
         }
         resp = requests.get(url, headers=headers, params={"ref": cfg["branch"]}, timeout=15)
-
         if resp.status_code == 404:
             return pd.DataFrame(columns=COLUNAS_LOG), None
-
         resp.raise_for_status()
         dados = resp.json()
         conteudo = base64.b64decode(dados.get("content", ""))
@@ -863,7 +850,6 @@ def _github_ler_arquivo() -> tuple[pd.DataFrame, str | None]:
 
 
 def _github_salvar_arquivo(df_log: pd.DataFrame, mensagem: str = "Atualiza log de acessos da Torre") -> bool:
-    """Salva o histórico no GitHub usando Contents API."""
     if not github_configurado():
         return False
 
@@ -877,12 +863,10 @@ def _github_salvar_arquivo(df_log: pd.DataFrame, mensagem: str = "Atualiza log d
             "X-GitHub-Api-Version": "2022-11-28",
         }
 
-        # Sempre lê o SHA mais recente antes de gravar para reduzir conflito.
         _, sha_atual = _github_ler_arquivo()
-        conteudo_b64 = base64.b64encode(_df_para_csv_bytes(df_log)).decode("utf-8")
         payload = {
             "message": mensagem,
-            "content": conteudo_b64,
+            "content": base64.b64encode(_df_para_csv_bytes(df_log)).decode("utf-8"),
             "branch": cfg["branch"],
         }
         if sha_atual:
@@ -890,7 +874,6 @@ def _github_salvar_arquivo(df_log: pd.DataFrame, mensagem: str = "Atualiza log d
 
         resp = requests.put(url, headers=headers, json=payload, timeout=20)
 
-        # Se houve conflito por atualização simultânea, tenta mais uma vez consolidando.
         if resp.status_code == 409:
             df_remoto, sha_novo = _github_ler_arquivo()
             df_final = _normalizar_df_log(pd.concat([df_remoto, df_log], ignore_index=True))
@@ -906,13 +889,9 @@ def _github_salvar_arquivo(df_log: pd.DataFrame, mensagem: str = "Atualiza log d
 
 
 def salvar_log_local(df_log: pd.DataFrame):
-    """Salva cópia local em CSV e Excel para backup/download."""
     df_log = _normalizar_df_log(df_log)
-
-    # CSV local como backup.
     Path(LOG_ACESSOS_CSV).write_bytes(_df_para_csv_bytes(df_log))
 
-    # Excel local como espelho para download.
     try:
         df_xlsx = df_log.copy()
         df_xlsx.to_excel(LOG_ACESSOS_XLSX, index=False, engine="openpyxl")
@@ -921,14 +900,12 @@ def salvar_log_local(df_log: pd.DataFrame):
 
 
 def carregar_log_acessos() -> pd.DataFrame:
-    """Carrega o histórico. Se GitHub estiver configurado, ele vira a fonte principal."""
     if github_configurado():
         df_github, _sha = _github_ler_arquivo()
         if not df_github.empty:
             salvar_log_local(df_github)
             return df_github
 
-        # Se o arquivo no GitHub ainda não existe, migra o histórico local para lá.
         df_local = _ler_log_local()
         if not df_local.empty:
             _github_salvar_arquivo(df_local, "Migra histórico inicial de acessos da Torre")
@@ -941,7 +918,6 @@ def carregar_log_acessos() -> pd.DataFrame:
 
 
 def salvar_log_completo(df_log: pd.DataFrame, mensagem_github: str = "Atualiza log de acessos da Torre"):
-    """Salva o histórico na fonte principal e mantém backup local."""
     df_log = _normalizar_df_log(df_log)
     salvar_log_local(df_log)
     if github_configurado():
@@ -949,14 +925,13 @@ def salvar_log_completo(df_log: pd.DataFrame, mensagem_github: str = "Atualiza l
 
 
 def registrar_log(nome_usuario: str, indicador: str, detalhe: str = ""):
-    """Registra cada acesso/click usando horário de São Paulo, sem duplicar no rerun."""
     try:
         nome_usuario = (nome_usuario or "Usuário").strip() or "Usuário"
         indicador = (indicador or "Não informado").strip() or "Não informado"
         detalhe = (detalhe or "").strip()
         data_hora_sp = datetime.now(ZoneInfo(FUSO_HORARIO_LOG)).replace(tzinfo=None).replace(microsecond=0)
 
-        # Proteção contra duplicidade do próprio Streamlit/rerun no mesmo clique.
+        # Anti-duplicidade por rerun/click repetido no mesmo evento.
         chave_evento = f"{nome_usuario}|{indicador}|{detalhe}"
         ultimo = st.session_state.get("_ultimo_log_evento", {})
         if ultimo.get("chave") == chave_evento:
@@ -979,7 +954,6 @@ def registrar_log(nome_usuario: str, indicador: str, detalhe: str = ""):
         base = pd.concat([base, novo], ignore_index=True)
         base = _normalizar_df_log(base)
         salvar_log_completo(base, "Registra acesso na Torre de Controle")
-
         st.session_state["_ultimo_log_evento"] = {"chave": chave_evento, "data": data_hora_sp}
 
     except Exception as e:
@@ -987,7 +961,6 @@ def registrar_log(nome_usuario: str, indicador: str, detalhe: str = ""):
 
 
 def apagar_todos_logs() -> bool:
-    """Apaga todos os registros, mantendo apenas o cabeçalho do arquivo."""
     try:
         vazio = pd.DataFrame(columns=COLUNAS_LOG)
         salvar_log_completo(vazio, "Apaga histórico de acessos da Torre")
@@ -997,8 +970,30 @@ def apagar_todos_logs() -> bool:
         return False
 
 
+def render_autenticacao_dashboard_acessos():
+    """Tela de senha antes de abrir o Dashboard de Acessos."""
+    st.markdown("## 🔐 Acesso restrito")
+    st.info("Informe a senha para acessar o Dashboard de Acessos.")
+
+    senha_digitada = st.text_input("Senha", type="password", key="senha_dashboard_acessos")
+
+    col_entra, col_volta = st.columns(2)
+    if col_entra.button("Entrar", use_container_width=True):
+        if senha_digitada == SENHA_DASHBOARD_ACESSOS:
+            st.session_state.dashboard_acessos_autenticado = True
+            registrar_log(st.session_state.nome, "Dashboard de Acessos", "Acesso autorizado")
+            st.rerun()
+        else:
+            st.error("Senha incorreta. Tente novamente.")
+
+    if col_volta.button("Voltar aos indicadores", use_container_width=True):
+        st.session_state.step = 1
+        st.session_state.indicador = None
+        st.session_state.dashboard_acessos_autenticado = False
+        st.rerun()
+
+
 def dashboard_acessos():
-    """Exibe o dashboard de acessos dentro do próprio app."""
     st.markdown("## 📊 Dashboard de Acessos - Torre de Controle")
 
     fonte_log = "GitHub" if github_configurado() else "arquivo local do app"
@@ -1007,38 +1002,21 @@ def dashboard_acessos():
     df_log = carregar_log_acessos()
     if df_log.empty:
         st.warning("Ainda não há registros de acessos.")
+    else:
+        df_log = df_log.dropna(subset=["Data"]).copy()
 
-        with st.expander("🛡️ Administração do log"):
+    if df_log.empty:
+        with st.expander("🛡️ Administração do log - apagar registros"):
             st.info("Não há registros para apagar.")
         return
 
-    df_log = df_log.dropna(subset=["Data"]).copy()
-    if df_log.empty:
-        st.warning("O arquivo de log existe, mas ainda não possui datas válidas.")
-        return
-
-    # Período padrão: mostra TODO o histórico disponível, não somente hoje.
     data_min = df_log["Data"].min().date()
     data_max = df_log["Data"].max().date()
 
     st.markdown("### 🔎 Filtros")
     col_f1, col_f2 = st.columns(2)
-    data_inicio = col_f1.date_input(
-        "Data início",
-        value=data_min,
-        min_value=data_min,
-        max_value=data_max,
-        format="DD/MM/YYYY",
-        key="log_data_inicio"
-    )
-    data_fim = col_f2.date_input(
-        "Data fim",
-        value=data_max,
-        min_value=data_min,
-        max_value=data_max,
-        format="DD/MM/YYYY",
-        key="log_data_fim"
-    )
+    data_inicio = col_f1.date_input("Data início", value=data_min, min_value=data_min, max_value=data_max, format="DD/MM/YYYY", key="log_data_inicio")
+    data_fim = col_f2.date_input("Data fim", value=data_max, min_value=data_min, max_value=data_max, format="DD/MM/YYYY", key="log_data_fim")
 
     inicio = pd.to_datetime(data_inicio)
     fim = pd.to_datetime(data_fim) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
@@ -1059,23 +1037,13 @@ def dashboard_acessos():
         st.caption(f"Histórico carregado de {data_min.strftime('%d/%m/%Y')} até {data_max.strftime('%d/%m/%Y')}.")
 
         st.markdown("### 📌 Indicadores mais acessados")
-        ranking_indicadores = (
-            df_filtrado["Indicador acessado"]
-            .fillna("Não informado")
-            .value_counts()
-            .reset_index()
-        )
+        ranking_indicadores = df_filtrado["Indicador acessado"].fillna("Não informado").value_counts().reset_index()
         ranking_indicadores.columns = ["Indicador acessado", "Qtd Acessos"]
         st.dataframe(ranking_indicadores, use_container_width=True, hide_index=True)
         st.bar_chart(ranking_indicadores.set_index("Indicador acessado"))
 
         st.markdown("### 👤 Usuários mais ativos")
-        ranking_usuarios = (
-            df_filtrado["Usuario"]
-            .fillna("Usuário")
-            .value_counts()
-            .reset_index()
-        )
+        ranking_usuarios = df_filtrado["Usuario"].fillna("Usuário").value_counts().reset_index()
         ranking_usuarios.columns = ["Usuario", "Qtd Acessos"]
         st.dataframe(ranking_usuarios, use_container_width=True, hide_index=True)
 
@@ -1091,12 +1059,11 @@ def dashboard_acessos():
         ultimos_exibicao["Data"] = ultimos_exibicao["Data"].dt.strftime("%d/%m/%Y %H:%M:%S")
         st.dataframe(ultimos_exibicao, use_container_width=True, hide_index=True)
 
-    # Download sempre considerando o histórico completo.
     df_export = df_log.sort_values("Data", ascending=False).copy()
     df_export = df_export[COLUNAS_EXIBICAO_LOG].copy()
     df_export["Data"] = df_export["Data"].dt.strftime("%d/%m/%Y %H:%M:%S")
-
     csv_download = df_export.to_csv(index=False, sep=";", encoding="utf-8-sig").encode("utf-8-sig")
+
     st.download_button(
         label="⬇️ Baixar histórico em CSV",
         data=csv_download,
@@ -1144,6 +1111,8 @@ if 'sf_vol_tipo_data' not in st.session_state:
     st.session_state.sf_vol_tipo_data = None
 if 'sf_vol_empresa' not in st.session_state:
     st.session_state.sf_vol_empresa = 'Geral'
+if 'dashboard_acessos_autenticado' not in st.session_state:
+    st.session_state.dashboard_acessos_autenticado = False
 
 base_real = None
 erro_base = None
@@ -1208,28 +1177,33 @@ elif st.session_state.step == 1:
         st.warning('No momento o fluxo de Valores dos EAs está em construção.')
 
     if c5.button('Dashboard de Acessos', use_container_width=True):
-        registrar_log(st.session_state.nome, "Dashboard de Acessos", "Menu principal")
         st.session_state.indicador = 'dashboard_acessos'
+        st.session_state.dashboard_acessos_autenticado = False
         st.session_state.step = 2
         st.rerun()
 
 elif st.session_state.step == 2:
     if st.session_state.indicador == 'dashboard_acessos':
-        dashboard_acessos()
+        if not st.session_state.dashboard_acessos_autenticado:
+            render_autenticacao_dashboard_acessos()
+        else:
+            dashboard_acessos()
 
-        c1, c2 = st.columns(2)
-        if c1.button('Voltar aos indicadores', use_container_width=True):
-            st.session_state.step = 1
-            st.session_state.indicador = None
-            st.rerun()
-        if c2.button('Reiniciar conversa', use_container_width=True):
-            st.session_state.step = 0
-            st.session_state.nome = ''
-            st.session_state.indicador = None
-            st.session_state.sf_visao = None
-            st.session_state.sf_vol_tipo_data = None
-            st.session_state.sf_vol_empresa = 'Geral'
-            st.rerun()
+            c1, c2 = st.columns(2)
+            if c1.button('Voltar aos indicadores', use_container_width=True):
+                st.session_state.step = 1
+                st.session_state.indicador = None
+                st.session_state.dashboard_acessos_autenticado = False
+                st.rerun()
+            if c2.button('Reiniciar conversa', use_container_width=True):
+                st.session_state.step = 0
+                st.session_state.nome = ''
+                st.session_state.indicador = None
+                st.session_state.sf_visao = None
+                st.session_state.sf_vol_tipo_data = None
+                st.session_state.sf_vol_empresa = 'Geral'
+                st.session_state.dashboard_acessos_autenticado = False
+                st.rerun()
 
     elif st.session_state.indicador == 'sf':
         st.markdown('<div class="menu-info"><strong>Opções disponíveis:</strong><br>Visão Geral | Visão por CDs | Visão por Empresas | Volumetria de Pedidos</div>', unsafe_allow_html=True)
@@ -1254,6 +1228,7 @@ elif st.session_state.step == 2:
             st.session_state.sf_visao = 'volumetria'
             st.session_state.sf_vol_tipo_data = None
             st.session_state.sf_vol_empresa = 'Geral'
+            st.session_state.dashboard_acessos_autenticado = False
             st.rerun()
 
         if base_real is not None:
@@ -1302,6 +1277,7 @@ elif st.session_state.step == 2:
             st.session_state.sf_visao = None
             st.session_state.sf_vol_tipo_data = None
             st.session_state.sf_vol_empresa = 'Geral'
+            st.session_state.dashboard_acessos_autenticado = False
             st.rerun()
         if c2.button('Reiniciar conversa', use_container_width=True):
             st.session_state.step = 0
@@ -1310,6 +1286,7 @@ elif st.session_state.step == 2:
             st.session_state.sf_visao = None
             st.session_state.sf_vol_tipo_data = None
             st.session_state.sf_vol_empresa = 'Geral'
+            st.session_state.dashboard_acessos_autenticado = False
             st.rerun()
 
     else:
